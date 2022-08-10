@@ -36,7 +36,7 @@ fn repl() !void {
             break;
         }
 
-        // try vm.interpret(&line);
+        _ = try vm.interpret(&line);
     }
 }
 
@@ -45,8 +45,7 @@ fn run(path: []const u8) !void {
     defer gAllocator.backing_allocator.free(source);
     var vm = VM.init();
     defer vm.deinit();
-    const result = // try vm.interpret(source);
-        @import("vm.zig").InterpretResult.ok;
+    const result = try vm.interpret(source);
 
     switch (result) {
         .compile_error => return error.CompileError,

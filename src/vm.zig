@@ -1,6 +1,7 @@
 const chunkMod = @import("chunk.zig");
 const Chunk = chunkMod.Chunk;
 const OpCode = chunkMod.OpCode;
+const compiler = @import("compiler.zig");
 const valueMod = @import("value.zig");
 const Value = valueMod.Value;
 const debug = @import("debug.zig");
@@ -52,10 +53,10 @@ pub const VM = struct {
         _ = self;
     }
 
-    pub fn interpret(self: *Self, chunk: *Chunk) !InterpretResult {
-        self.chunk = chunk;
-        self.ip = 0;
-        return self.run();
+    pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
+        _ = self;
+        try compiler.compile(source);
+        return .ok;
     }
 
     fn readByte(self: *Self) u8 {
