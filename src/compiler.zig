@@ -8,6 +8,8 @@ const chunkMod = @import("chunk.zig");
 const Chunk = chunkMod.Chunk;
 const OpCode = chunkMod.OpCode;
 const Value = @import("value.zig").Value;
+const common = @import("common.zig");
+const debug = @import("debug.zig");
 
 const Precedence = enum(u8) {
     prec_none,
@@ -23,7 +25,7 @@ const Precedence = enum(u8) {
     prec_primary,
 };
 
-const ParseError = error{};
+const ParseError = std.mem.Allocator.Error || std.fmt.ParseFloatError;
 
 const ParseFn = ?fn (parser: *Parser) ParseError!void;
 
@@ -33,9 +35,35 @@ const ParseRule = struct {
     precedence: Precedence = .prec_none,
 };
 
-const parseRules = [_]ParseRule{
-    
-};
+fn getRule(kind: TokenKind) ParseRule {
+    return switch (kind) {
+        .tk_left_paren => .{
+            .prefix = Parser.grouping,
+            .precedence = .prec_none,
+        },
+        .tk_minus => .{
+            .prefix = Parser.unary,
+            .infix = Parser.binary,
+            .precedence = .prec_term,
+        },
+        .tk_plus => .{
+            .infix = Parser.binary,
+            .precedence = .prec_term,
+        },
+        .tk_slash => .{
+            .infix = Parser.binary,
+            .precedence = .prec_factor,
+        },
+        .tk_star => .{
+            .infix = Parser.binary,
+            .precedence = .prec_factor,
+        },
+        .tk_number => .{
+            .prefix = Parser.number,
+        },
+        else => .{},
+    };
+}
 
 const Parser = struct {
     scanner: *Scanner,
@@ -146,7 +174,20 @@ const Parser = struct {
     }
 
     fn parsePrecedence(self: *Self, precedence: Precedence) ParseError!void {
-        // TODO
+        self.advance();
+        const prefixRule = getRule(self.previous.kind).prefix;
+        if (prefixRule == null) {
+            self.emitError("Expect expression.");
+            return;
+        }
+
+        try prefixRule.?(self);
+
+        while (@enumToInt(precedence) <= @enumToInt(getRule(self.current.kind).precedence)) {
+            self.advance();
+            const infixRule = getRule(self.previous.kind).infix;
+            try infixRule.?(self);
+        }
     }
 };
 
@@ -181,6 +222,13 @@ const Compiler = struct {
 
     pub fn end(self: *Self) !void {
         try self.emitReturn();
+        if (common.debugPrintCode) {
+            try debug.disassembleChunk(
+                std.io.getStdOut().writer(),
+                self.currentChunk(),
+                "code",
+            );
+        }
     }
 
     pub fn emitBytes(self: *Self, b1: u8, b2: u8) !void {
@@ -190,7 +238,7 @@ const Compiler = struct {
 
     pub fn emitConstant(self: *Self, value: Value) !void {
         try self.emitBytes(
-            @enumToInt(TokenKind.op_constant),
+            @enumToInt(OpCode.op_constant),
             try self.makeConstant(value),
         );
     }
