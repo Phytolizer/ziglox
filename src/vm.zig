@@ -4,6 +4,7 @@ const OpCode = chunkMod.OpCode;
 const valueMod = @import("value.zig");
 const Value = valueMod.Value;
 const debug = @import("debug.zig");
+const common = @import("common.zig");
 
 pub const InterpretResult = enum {
     ok,
@@ -46,6 +47,9 @@ pub const VM = struct {
 
     fn run(self: *Self) !InterpretResult {
         while (true) {
+            if (common.debugTraceExecution) {
+                _ = try debug.disassembleInstruction(self.chunk.?, self.ip);
+            }
             const instruction = @intToEnum(OpCode, self.readByte());
             switch (instruction) {
                 .op_constant => {

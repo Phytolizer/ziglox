@@ -18,7 +18,6 @@ pub fn main() !void {
     try chunk.write(@intCast(u8, constant), 123);
     try chunk.writeOp(.op_return, 123);
 
-    try debug.disassembleChunk(&chunk, "test chunk");
     _ = try vm.interpret(&chunk);
 }
 
