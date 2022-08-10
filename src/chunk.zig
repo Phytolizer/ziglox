@@ -15,6 +15,7 @@ pub const Chunk = struct {
     count: usize,
     capacity: usize,
     code: ?[]u8,
+    lines: ?[]usize,
     constants: ValueArray,
 
     const Self = @This();
@@ -25,27 +26,33 @@ pub const Chunk = struct {
             .count = 0,
             .capacity = 0,
             .code = null,
+            .lines = null,
             .constants = ValueArray.init(allocator),
         };
     }
 
-    pub fn write(self: *Self, byte: u8) !void {
+    pub fn write(self: *Self, byte: u8, line: usize) !void {
         if (self.capacity < self.count + 1) {
             self.capacity = memory.growCapacity(self.capacity);
             self.code = try memory.growArray(u8, self.allocator, self.code, self.capacity);
+            self.lines = try memory.growArray(usize, self.allocator, self.lines, self.capacity);
         }
 
         self.code.?[self.count] = byte;
+        self.lines.?[self.count] = line;
         self.count += 1;
     }
 
-    pub fn writeOp(self: *Self, op: OpCode) !void {
-        return self.write(@enumToInt(op));
+    pub fn writeOp(self: *Self, op: OpCode, line: usize) !void {
+        return self.write(@enumToInt(op), line);
     }
 
     pub fn deinit(self: *Self) void {
         if (self.code != null) {
             memory.freeArray(u8, self.allocator, self.code.?);
+        }
+        if (self.lines != null) {
+            memory.freeArray(usize, self.allocator, self.lines.?);
         }
         self.constants.deinit();
         self.* = Self.init(self.allocator);
