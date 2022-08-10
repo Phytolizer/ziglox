@@ -86,6 +86,7 @@ pub const VM = struct {
                     const constant = self.readConstant();
                     self.push(constant);
                 },
+                .op_negate => self.push(-self.pop()),
                 .op_return => {
                     try valueMod.printValue(stdout, self.pop());
                     try stdout.writeAll("\n");

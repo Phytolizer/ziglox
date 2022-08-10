@@ -16,6 +16,7 @@ pub fn main() !void {
     const constant = try chunk.addConstant(1.2);
     try chunk.writeOp(.op_constant, 123);
     try chunk.write(@intCast(u8, constant), 123);
+    try chunk.writeOp(.op_negate, 123);
     try chunk.writeOp(.op_return, 123);
 
     _ = try vm.interpret(&chunk);
