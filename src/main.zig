@@ -5,7 +5,6 @@ const debug = @import("debug.zig");
 const VM = @import("vm.zig").VM;
 const Allocator = std.mem.Allocator;
 
-const stdout = debug.stdout;
 const gAllocator = std.heap.GeneralPurposeAllocator(.{}){};
 
 pub fn main() !void {
@@ -24,6 +23,7 @@ pub fn main() !void {
 fn repl() !void {
     var line: [1024]u8 = undefined;
     const stdin = std.io.getStdIn().reader();
+    const stdout = std.io.getStdOut().writer();
 
     var vm = VM.init();
     defer vm.deinit();
@@ -36,7 +36,7 @@ fn repl() !void {
             break;
         }
 
-        _ = try vm.interpret(&line);
+        _ = try vm.interpret(gAllocator.backing_allocator, &line);
     }
 }
 
@@ -45,7 +45,7 @@ fn run(path: []const u8) !void {
     defer gAllocator.backing_allocator.free(source);
     var vm = VM.init();
     defer vm.deinit();
-    const result = try vm.interpret(source);
+    const result = try vm.interpret(gAllocator.backing_allocator, source);
 
     switch (result) {
         .compile_error => return error.CompileError,
@@ -102,7 +102,7 @@ test "chunk doesn't leak" {
     try chunk.writeOp(.op_negate, 123);
     try chunk.writeOp(.op_return, 123);
 
-    _ = try vm.interpret(&chunk);
+    _ = try vm.interpret(std.testing.allocator, &chunk);
 }
 
 test "can read file" {

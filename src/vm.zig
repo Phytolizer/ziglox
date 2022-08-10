@@ -7,8 +7,8 @@ const Value = valueMod.Value;
 const debug = @import("debug.zig");
 const common = @import("common.zig");
 const math = @import("math.zig");
-
-const stdout = debug.stdout;
+const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 pub const InterpretResult = enum {
     ok,
@@ -53,10 +53,19 @@ pub const VM = struct {
         _ = self;
     }
 
-    pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
-        _ = self;
-        try compiler.compile(source);
-        return .ok;
+    pub fn interpret(self: *Self, allocator: Allocator, source: []const u8) !InterpretResult {
+        var chunk = Chunk.init(allocator);
+        defer chunk.deinit();
+
+        if (!(try compiler.compile(source, &chunk))) {
+            return .compile_error;
+        }
+
+        self.chunk = &chunk;
+        self.ip = 0;
+
+        const result = try self.run();
+        return result;
     }
 
     fn readByte(self: *Self) u8 {
@@ -76,6 +85,7 @@ pub const VM = struct {
     }
 
     fn run(self: *Self) !InterpretResult {
+        const stdout = std.io.getStdOut().writer();
         while (true) {
             if (common.debugTraceExecution) {
                 try stdout.writeAll("          ");
@@ -86,7 +96,7 @@ pub const VM = struct {
                     try stdout.writeAll(" ]");
                 }
                 try stdout.writeAll("\n");
-                _ = try debug.disassembleInstruction(self.chunk.?, self.ip);
+                _ = try debug.disassembleInstruction(stdout, self.chunk.?, self.ip);
             }
             const instruction = @intToEnum(OpCode, self.readByte());
             switch (instruction) {
