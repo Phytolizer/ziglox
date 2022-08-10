@@ -51,7 +51,7 @@ fn run(path: []const u8) !void {
     switch (result) {
         .compile_error => return error.CompileError,
         .runtime_error => return error.RuntimeError,
-        else => {},
+        .ok => {},
     }
 }
 
