@@ -11,16 +11,21 @@ pub fn growCapacity(capacity: usize) usize {
 pub fn growArray(
     comptime T: type,
     allocator: Allocator,
-    array: []T,
+    array: ?[]T,
     newCount: usize,
 ) !?[]T {
     const newSize = newCount * @sizeOf(T);
     if (newSize == 0) {
-        allocator.free(array);
+        if (array != null) {
+            allocator.free(array.?);
+        }
         return null;
     }
 
-    const result = try allocator.realloc(array, newSize);
+    const result = if (array == null)
+        try allocator.alloc(T, newSize)
+    else
+        try allocator.realloc(array.?, newSize);
     return result;
 }
 
