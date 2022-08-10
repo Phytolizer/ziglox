@@ -13,9 +13,17 @@ pub fn main() !void {
     var chunk = Chunk.init(allocator.backing_allocator);
     defer chunk.deinit();
 
-    const constant = try chunk.addConstant(1.2);
+    var constant = try chunk.addConstant(1.2);
     try chunk.writeOp(.op_constant, 123);
     try chunk.write(@intCast(u8, constant), 123);
+    constant = try chunk.addConstant(3.4);
+    try chunk.writeOp(.op_constant, 123);
+    try chunk.write(@intCast(u8, constant), 123);
+    try chunk.writeOp(.op_add, 123);
+    constant = try chunk.addConstant(5.6);
+    try chunk.writeOp(.op_constant, 123);
+    try chunk.write(@intCast(u8, constant), 123);
+    try chunk.writeOp(.op_divide, 123);
     try chunk.writeOp(.op_negate, 123);
     try chunk.writeOp(.op_return, 123);
 

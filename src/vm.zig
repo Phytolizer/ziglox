@@ -5,6 +5,7 @@ const valueMod = @import("value.zig");
 const Value = valueMod.Value;
 const debug = @import("debug.zig");
 const common = @import("common.zig");
+const math = @import("math.zig");
 
 const stdout = debug.stdout;
 
@@ -67,6 +68,12 @@ pub const VM = struct {
         return self.chunk.?.constants.values.?[self.readByte()];
     }
 
+    fn binaryOp(self: *Self, comptime f: fn (comptime T: type, Value, Value) Value) void {
+        const b = self.pop();
+        const a = self.pop();
+        self.push(f(Value, a, b));
+    }
+
     fn run(self: *Self) !InterpretResult {
         while (true) {
             if (common.debugTraceExecution) {
@@ -87,6 +94,10 @@ pub const VM = struct {
                     self.push(constant);
                 },
                 .op_negate => self.push(-self.pop()),
+                .op_add => self.binaryOp(math.add),
+                .op_subtract => self.binaryOp(math.sub),
+                .op_multiply => self.binaryOp(math.mul),
+                .op_divide => self.binaryOp(math.div),
                 .op_return => {
                     try valueMod.printValue(stdout, self.pop());
                     try stdout.writeAll("\n");
