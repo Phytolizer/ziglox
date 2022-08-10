@@ -4,7 +4,7 @@ const Chunk = chunkMod.Chunk;
 const OpCode = chunkMod.OpCode;
 const valueMod = @import("value.zig");
 
-const stdout = std.io.getStdOut().writer();
+pub const stdout = std.io.getStdOut().writer();
 
 pub fn disassembleChunk(chunk: *Chunk, name: []const u8) !void {
     try stdout.print("== {s} ==\n", .{name});

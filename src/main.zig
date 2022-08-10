@@ -2,9 +2,14 @@ const std = @import("std");
 const chunkMod = @import("chunk.zig");
 const Chunk = chunkMod.Chunk;
 const debug = @import("debug.zig");
+const VM = @import("vm.zig").VM;
 
 pub fn main() !void {
     var allocator = std.heap.GeneralPurposeAllocator(.{}){};
+
+    var vm = VM.init();
+    defer vm.deinit();
+
     var chunk = Chunk.init(allocator.backing_allocator);
     defer chunk.deinit();
 
@@ -14,6 +19,7 @@ pub fn main() !void {
     try chunk.writeOp(.op_return, 123);
 
     try debug.disassembleChunk(&chunk, "test chunk");
+    _ = try vm.interpret(&chunk);
 }
 
 test "chunk doesn't leak" {
