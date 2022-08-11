@@ -25,6 +25,9 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
     switch (instruction) {
         .op_constant => return constantInstruction(writer, "OP_CONSTANT", chunk, offset),
         .op_negate => return simpleInstruction(writer, "OP_NEGATE", offset),
+        .op_nil => return simpleInstruction(writer, "OP_NIL", offset),
+        .op_true => return simpleInstruction(writer, "OP_TRUE", offset),
+        .op_false => return simpleInstruction(writer, "OP_FALSE", offset),
         .op_add => return simpleInstruction(writer, "OP_ADD", offset),
         .op_subtract => return simpleInstruction(writer, "OP_SUBTRACT", offset),
         .op_multiply => return simpleInstruction(writer, "OP_MULTIPLY", offset),

@@ -94,5 +94,15 @@ pub const ValueArray = struct {
 };
 
 pub fn printValue(writer: Writer, value: Value) !void {
-    return writer.print("{d}", .{try value.asNumber()});
+    switch (value) {
+        Value.boolean => |b| {
+            try writer.print("{}", .{b});
+        },
+        Value.nil => {
+            try writer.writeAll("nil");
+        },
+        Value.number => |n| {
+            try writer.print("{d}", .{n});
+        },
+    }
 }

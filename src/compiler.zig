@@ -62,6 +62,15 @@ fn getRule(kind: TokenKind) ParseRule {
         .tk_number => .{
             .prefix = Parser.number,
         },
+        .tk_false => .{
+            .prefix = Parser.literal,
+        },
+        .tk_true => .{
+            .prefix = Parser.literal,
+        },
+        .tk_nil => .{
+            .prefix = Parser.literal,
+        },
         else => .{},
     };
 }
@@ -147,6 +156,15 @@ const Parser = struct {
     fn grouping(self: *Self) ParseError!void {
         try self.expression();
         self.consume(.tk_right_paren, "Expect ')' after expression.");
+    }
+
+    fn literal(self: *Self) ParseError!void {
+        switch (self.previous.kind) {
+            .tk_false => try self.compiler.?.emitOp(.op_false),
+            .tk_true => try self.compiler.?.emitOp(.op_true),
+            .tk_nil => try self.compiler.?.emitOp(.op_nil),
+            else => unreachable,
+        }
     }
 
     fn unary(self: *Self) ParseError!void {

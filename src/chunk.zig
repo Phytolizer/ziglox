@@ -8,6 +8,9 @@ const Value = valueMod.Value;
 pub const OpCode = enum(u8) {
     op_constant,
     op_negate,
+    op_nil,
+    op_true,
+    op_false,
     op_add,
     op_subtract,
     op_multiply,

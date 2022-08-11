@@ -129,6 +129,15 @@ pub const VM = struct {
                     }
                     self.push(valueMod.numberVal(-(try self.pop().asNumber())));
                 },
+                .op_nil => {
+                    self.push(valueMod.nilVal());
+                },
+                .op_true => {
+                    self.push(valueMod.boolVal(true));
+                },
+                .op_false => {
+                    self.push(valueMod.boolVal(false));
+                },
                 .op_add => {
                     self.binaryOp(valueMod.numberVal, math.add) catch
                         return .runtime_error;
