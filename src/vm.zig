@@ -78,10 +78,28 @@ pub const VM = struct {
         return self.chunk.?.constants.values.?[self.readByte()];
     }
 
-    fn binaryOp(self: *Self, comptime f: fn (comptime T: type, Value, Value) Value) void {
-        const b = self.pop();
-        const a = self.pop();
-        self.push(f(Value, a, b));
+    fn binaryOp(self: *Self, comptime valueType: fn (f64) Value, comptime op: fn (comptime T: type, Value, Value) Value) !void {
+        if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+            self.runtimeError("Operands must be numbers.", .{});
+            return error.RuntimeError;
+        }
+        const b = self.pop().asNumber() catch unreachable;
+        const a = self.pop().asNumber() catch unreachable;
+        self.push(valueType(op(f64, a, b)));
+    }
+
+    fn peek(self: *Self, distance: usize) Value {
+        return self.stack[self.stackTop - distance - 1];
+    }
+
+    fn runtimeError(self: *Self, comptime format: []const u8, comptime args: anytype) void {
+        std.debug.print(format, args);
+        std.debug.print("\n", .{});
+
+        const instruction = self.ip;
+        const line = self.chunk.?.lines.?[instruction];
+        std.debug.print("[line {d}] in script\n", .{line});
+        self.resetStack();
     }
 
     fn run(self: *Self) !InterpretResult {
@@ -104,11 +122,29 @@ pub const VM = struct {
                     const constant = self.readConstant();
                     self.push(constant);
                 },
-                .op_negate => self.push(-self.pop()),
-                .op_add => self.binaryOp(math.add),
-                .op_subtract => self.binaryOp(math.sub),
-                .op_multiply => self.binaryOp(math.mul),
-                .op_divide => self.binaryOp(math.div),
+                .op_negate => {
+                    if (!self.peek(0).isNumber()) {
+                        self.runtimeError("Operand must be a number.", .{});
+                        return .runtime_error;
+                    }
+                    self.push(valueMod.numberVal(-(try self.pop().asNumber())));
+                },
+                .op_add => {
+                    self.binaryOp(valueMod.numberVal, math.add) catch
+                        return .runtime_error;
+                },
+                .op_subtract => {
+                    self.binaryOp(valueMod.numberVal, math.sub) catch
+                        return .runtime_error;
+                },
+                .op_multiply => {
+                    self.binaryOp(valueMod.numberVal, math.mul) catch
+                        return .runtime_error;
+                },
+                .op_divide => {
+                    self.binaryOp(valueMod.numberVal, math.div) catch
+                        return .runtime_error;
+                },
                 .op_return => {
                     try valueMod.printValue(stdout, self.pop());
                     try stdout.writeAll("\n");

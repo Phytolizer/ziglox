@@ -3,7 +3,60 @@ const Allocator = std.mem.Allocator;
 const memory = @import("memory.zig");
 const Writer = std.fs.File.Writer;
 
-pub const Value = f64;
+pub const Value = union(enum) {
+    boolean: bool,
+    number: f64,
+    nil,
+
+    const Self = @This();
+
+    pub fn asBool(self: Self) !bool {
+        return switch (self) {
+            Self.boolean => |b| b,
+            else => error.NotABool,
+        };
+    }
+
+    pub fn asNumber(self: Self) !f64 {
+        return switch (self) {
+            Self.number => |n| n,
+            else => error.NotANumber,
+        };
+    }
+
+    pub fn isBool(self: Self) bool {
+        return switch (self) {
+            Self.boolean => true,
+            else => false,
+        };
+    }
+
+    pub fn isNumber(self: Self) bool {
+        return switch (self) {
+            Self.number => true,
+            else => false,
+        };
+    }
+
+    pub fn isNil(self: Self) bool {
+        return switch (self) {
+            Self.nil => true,
+            else => false,
+        };
+    }
+};
+
+pub fn boolVal(b: bool) Value {
+    return Value{ .boolean = b };
+}
+
+pub fn nilVal() Value {
+    return Value.nil;
+}
+
+pub fn numberVal(n: f64) Value {
+    return Value{ .number = n };
+}
 
 pub const ValueArray = struct {
     allocator: Allocator,
@@ -41,5 +94,5 @@ pub const ValueArray = struct {
 };
 
 pub fn printValue(writer: Writer, value: Value) !void {
-    return writer.print("{d}", .{value});
+    return writer.print("{d}", .{try value.asNumber()});
 }

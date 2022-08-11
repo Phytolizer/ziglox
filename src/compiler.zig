@@ -7,7 +7,8 @@ const TokenKind = scannerMod.TokenKind;
 const chunkMod = @import("chunk.zig");
 const Chunk = chunkMod.Chunk;
 const OpCode = chunkMod.OpCode;
-const Value = @import("value.zig").Value;
+const valueMod = @import("value.zig");
+const Value = valueMod.Value;
 const common = @import("common.zig");
 const debug = @import("debug.zig");
 
@@ -140,7 +141,7 @@ const Parser = struct {
 
     fn number(self: *Self) ParseError!void {
         const value = try std.fmt.parseFloat(f64, self.previous.text);
-        try self.compiler.?.emitConstant(value);
+        try self.compiler.?.emitConstant(valueMod.numberVal(value));
     }
 
     fn grouping(self: *Self) ParseError!void {
