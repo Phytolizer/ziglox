@@ -154,6 +154,9 @@ pub const VM = struct {
                     self.binaryOp(valueMod.numberVal, math.div) catch
                         return .runtime_error;
                 },
+                .op_not => {
+                    self.push(valueMod.boolVal(self.pop().isFalsey()));
+                },
                 .op_return => {
                     try valueMod.printValue(stdout, self.pop());
                     try stdout.writeAll("\n");

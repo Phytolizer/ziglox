@@ -44,6 +44,14 @@ pub const Value = union(enum) {
             else => false,
         };
     }
+
+    pub fn isFalsey(self: Self) bool {
+        return switch (self) {
+            Self.nil => true,
+            Self.boolean => |b| !b,
+            else => false,
+        };
+    }
 };
 
 pub fn boolVal(b: bool) Value {

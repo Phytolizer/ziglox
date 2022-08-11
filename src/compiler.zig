@@ -71,6 +71,9 @@ fn getRule(kind: TokenKind) ParseRule {
         .tk_nil => .{
             .prefix = Parser.literal,
         },
+        .tk_bang => .{
+            .prefix = Parser.unary,
+        },
         else => .{},
     };
 }
@@ -174,6 +177,7 @@ const Parser = struct {
 
         switch (operatorKind) {
             .tk_minus => try self.compiler.?.emitOp(.op_negate),
+            .tk_bang => try self.compiler.?.emitOp(.op_not),
             else => unreachable,
         }
     }

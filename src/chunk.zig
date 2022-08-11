@@ -15,6 +15,7 @@ pub const OpCode = enum(u8) {
     op_subtract,
     op_multiply,
     op_divide,
+    op_not,
     op_return,
 };
 

@@ -32,6 +32,7 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
         .op_subtract => return simpleInstruction(writer, "OP_SUBTRACT", offset),
         .op_multiply => return simpleInstruction(writer, "OP_MULTIPLY", offset),
         .op_divide => return simpleInstruction(writer, "OP_DIVIDE", offset),
+        .op_not => return simpleInstruction(writer, "OP_NOT", offset),
         .op_return => return simpleInstruction(writer, "OP_RETURN", offset),
     }
 }
