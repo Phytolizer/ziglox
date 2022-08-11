@@ -74,6 +74,30 @@ fn getRule(kind: TokenKind) ParseRule {
         .tk_bang => .{
             .prefix = Parser.unary,
         },
+        .tk_bang_equal => .{
+            .infix = Parser.binary,
+            .precedence = .prec_equality,
+        },
+        .tk_equal_equal => .{
+            .infix = Parser.binary,
+            .precedence = .prec_equality,
+        },
+        .tk_greater => .{
+            .infix = Parser.binary,
+            .precedence = .prec_comparison,
+        },
+        .tk_greater_equal => .{
+            .infix = Parser.binary,
+            .precedence = .prec_comparison,
+        },
+        .tk_less => .{
+            .infix = Parser.binary,
+            .precedence = .prec_comparison,
+        },
+        .tk_less_equal => .{
+            .infix = Parser.binary,
+            .precedence = .prec_comparison,
+        },
         else => .{},
     };
 }
@@ -188,6 +212,12 @@ const Parser = struct {
         try self.parsePrecedence(@intToEnum(Precedence, @enumToInt(rule.precedence) + 1));
 
         switch (operatorKind) {
+            .tk_bang_equal => try self.compiler.?.emitOps(.op_equal, .op_not),
+            .tk_equal_equal => try self.compiler.?.emitOp(.op_equal),
+            .tk_greater => try self.compiler.?.emitOp(.op_greater),
+            .tk_greater_equal => try self.compiler.?.emitOps(.op_less, .op_not),
+            .tk_less => try self.compiler.?.emitOp(.op_less),
+            .tk_less_equal => try self.compiler.?.emitOps(.op_greater, .op_not),
             .tk_plus => try self.compiler.?.emitOp(.op_add),
             .tk_minus => try self.compiler.?.emitOp(.op_subtract),
             .tk_star => try self.compiler.?.emitOp(.op_multiply),
@@ -257,6 +287,10 @@ const Compiler = struct {
     pub fn emitBytes(self: *Self, b1: u8, b2: u8) !void {
         try self.emitByte(b1);
         try self.emitByte(b2);
+    }
+
+    pub fn emitOps(self: *Self, op1: OpCode, op2: OpCode) !void {
+        try self.emitBytes(@enumToInt(op1), @enumToInt(op2));
     }
 
     pub fn emitConstant(self: *Self, value: Value) !void {

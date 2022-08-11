@@ -45,11 +45,39 @@ pub const Value = union(enum) {
         };
     }
 
+    pub fn maybeBool(self: Self) ?bool {
+        return switch (self) {
+            Self.boolean => |b| b,
+            else => null,
+        };
+    }
+
+    pub fn maybeNumber(self: Self) ?f64 {
+        return switch (self) {
+            Self.number => |n| n,
+            else => null,
+        };
+    }
+
     pub fn isFalsey(self: Self) bool {
         return switch (self) {
             Self.nil => true,
             Self.boolean => |b| !b,
             else => false,
+        };
+    }
+
+    pub fn equals(self: Self, other: Self) bool {
+        return switch (self) {
+            Self.boolean => |sb| if (other.maybeBool()) |ob|
+                sb == ob
+            else
+                false,
+            Self.number => |sn| if (other.maybeNumber()) |on|
+                sn == on
+            else
+                false,
+            Self.nil => other.isNil(),
         };
     }
 };

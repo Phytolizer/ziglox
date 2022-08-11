@@ -78,7 +78,7 @@ pub const VM = struct {
         return self.chunk.?.constants.values.?[self.readByte()];
     }
 
-    fn binaryOp(self: *Self, comptime valueType: fn (f64) Value, comptime op: fn (comptime T: type, Value, Value) Value) !void {
+    fn binaryOp(self: *Self, comptime T: type, comptime valueType: fn (T) Value, comptime op: fn (comptime T: type, Value, Value) Value) !void {
         if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
             self.runtimeError("Operands must be numbers.", .{});
             return error.RuntimeError;
@@ -138,20 +138,33 @@ pub const VM = struct {
                 .op_false => {
                     self.push(valueMod.boolVal(false));
                 },
+                .op_equal => {
+                    const b = self.pop();
+                    const a = self.pop();
+                    self.push(valueMod.boolVal(a.equals(b)));
+                },
+                .op_greater => {
+                    self.binaryOp(bool, valueMod.boolVal, math.greater) catch
+                        return .runtime_error;
+                },
+                .op_less => {
+                    self.binaryOp(bool, valueMod.boolVal, math.less) catch
+                        return .runtime_error;
+                },
                 .op_add => {
-                    self.binaryOp(valueMod.numberVal, math.add) catch
+                    self.binaryOp(f64, valueMod.numberVal, math.add) catch
                         return .runtime_error;
                 },
                 .op_subtract => {
-                    self.binaryOp(valueMod.numberVal, math.sub) catch
+                    self.binaryOp(f64, valueMod.numberVal, math.sub) catch
                         return .runtime_error;
                 },
                 .op_multiply => {
-                    self.binaryOp(valueMod.numberVal, math.mul) catch
+                    self.binaryOp(f64, valueMod.numberVal, math.mul) catch
                         return .runtime_error;
                 },
                 .op_divide => {
-                    self.binaryOp(valueMod.numberVal, math.div) catch
+                    self.binaryOp(f64, valueMod.numberVal, math.div) catch
                         return .runtime_error;
                 },
                 .op_not => {
