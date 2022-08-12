@@ -113,6 +113,7 @@ pub const Table = struct {
             const entry = &self.entries.?[index];
             if (entry.key == null) {
                 if (entry.value.isNil()) {
+                    std.debug.assert(entry.key == null);
                     std.debug.print("[findString] Found empty entry\n", .{});
                     return null;
                 }
