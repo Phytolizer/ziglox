@@ -25,7 +25,7 @@ fn repl() !void {
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
-    var vm = VM.init();
+    var vm = VM.init(gAllocator.backing_allocator);
     defer vm.deinit();
 
     while (true) {
@@ -43,7 +43,7 @@ fn repl() !void {
 fn run(path: []const u8) !void {
     const source = try readFile(gAllocator.backing_allocator, path);
     defer gAllocator.backing_allocator.free(source);
-    var vm = VM.init();
+    var vm = VM.init(gAllocator.backing_allocator);
     defer vm.deinit();
     const result = try vm.interpret(gAllocator.backing_allocator, source);
 
@@ -82,7 +82,7 @@ fn readFile(allocator: Allocator, path: []const u8) ![]u8 {
 }
 
 test "chunk doesn't leak" {
-    var vm = VM.init();
+    var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
 
     var chunk = Chunk.init(std.testing.allocator);

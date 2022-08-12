@@ -79,3 +79,8 @@ pub fn printObj(writer: Writer, value: Value) !void {
         },
     }
 }
+
+pub fn takeString(allocator: Allocator, chars: []u8) !*Obj.String {
+    const result = try allocateString(allocator, chars);
+    return result;
+}

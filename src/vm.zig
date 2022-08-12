@@ -9,6 +9,8 @@ const common = @import("common.zig");
 const math = @import("math.zig");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const objectMod = @import("object.zig");
+const memoryMod = @import("memory.zig");
 
 pub const InterpretResult = enum {
     ok,
@@ -23,15 +25,17 @@ pub const VM = struct {
     ip: usize,
     stack: [stackMax]Value,
     stackTop: usize,
+    allocator: Allocator,
 
     const Self = @This();
 
-    pub fn init() Self {
+    pub fn init(allocator: Allocator) Self {
         return Self{
             .chunk = null,
             .ip = 0,
             .stack = undefined,
             .stackTop = 0,
+            .allocator = allocator,
         };
     }
 
@@ -152,8 +156,14 @@ pub const VM = struct {
                         return .runtime_error;
                 },
                 .op_add => {
-                    self.binaryOp(f64, valueMod.numberVal, math.add) catch
+                    if (objectMod.isString(self.peek(0)) and objectMod.isString(self.peek(1))) {
+                        try self.concatenate();
+                    } else if (self.peek(0).isNumber() and self.peek(1).isNumber()) {
+                        self.binaryOp(f64, valueMod.numberVal, math.add) catch unreachable;
+                    } else {
+                        self.runtimeError("Operands must be two numbers or two strings.", .{});
                         return .runtime_error;
+                    }
                 },
                 .op_subtract => {
                     self.binaryOp(f64, valueMod.numberVal, math.sub) catch
@@ -177,5 +187,17 @@ pub const VM = struct {
                 },
             }
         }
+    }
+
+    fn concatenate(self: *Self) !void {
+        const b = objectMod.asString(self.pop()) catch unreachable;
+        const a = objectMod.asString(self.pop()) catch unreachable;
+
+        const length = a.data.len + b.data.len;
+        const chars = try self.allocator.alloc(u8, length);
+        std.mem.copy(u8, chars, a.data);
+        std.mem.copy(u8, chars[a.data.len ..], b.data);
+        const result = try objectMod.takeString(self.allocator, chars);
+        self.push(valueMod.objVal(&result.obj));
     }
 };
