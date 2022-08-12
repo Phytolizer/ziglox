@@ -81,11 +81,11 @@ fn readFile(allocator: Allocator, path: []const u8) ![]u8 {
     return buffer;
 }
 
-test "chunk doesn't leak" {
+test "VM doesn't leak" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
 
-    _ = try vm.interpret("\"test\"");
+    _ = try vm.interpret("\"te\" + \"st\" == \"test\"");
 }
 
 test "can read file" {
