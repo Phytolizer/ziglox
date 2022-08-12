@@ -3,6 +3,8 @@ const Value = valueMod.Value;
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Writer = std.fs.File.Writer;
+const VM = @import("vm.zig").VM;
+const memoryMod = @import("memory.zig");
 
 pub fn objKind(v: Value) !ObjKind {
     const o = try v.asObj();
@@ -35,10 +37,19 @@ pub const ObjKind = enum {
 
 pub const Obj = struct {
     kind: ObjKind,
-    // compiler bug: ZSTs don't integrate well with @fieldParentPtr
-    _nothing: u1,
+    next: ?*Obj = null,
 
     const Self = @This();
+
+    pub fn deinit(self: *Self, allocator: Allocator) void {
+        switch (self.kind) {
+            .obj_string => {
+                const s = self.asString();
+                memoryMod.freeArray(u8, allocator, s.data);
+                allocator.destroy(s);
+            },
+        }
+    }
 
     pub fn asString(self: *Self) *String {
         switch (self.kind) {
@@ -52,21 +63,23 @@ pub const Obj = struct {
     };
 };
 
-pub fn copyString(allocator: Allocator, chars: []const u8) !*Obj {
-    const heapChars = try allocator.alloc(u8, chars.len);
+pub fn copyString(vm: *VM, chars: []const u8) !*Obj {
+    const heapChars = try vm.allocator.alloc(u8, chars.len);
     std.mem.copy(u8, heapChars, chars);
-    const str = try allocateString(allocator, heapChars);
+    const str = try allocateString(vm, heapChars);
     return &str.obj;
 }
 
-fn allocateObj(comptime T: type, allocator: Allocator, objectKind: ObjKind) !*T {
-    const obj = try allocator.create(T);
+fn allocateObj(comptime T: type, vm: *VM, objectKind: ObjKind) !*T {
+    const obj = try vm.allocator.create(T);
     obj.obj.kind = objectKind;
+    obj.obj.next = vm.objects;
+    vm.objects = &obj.obj;
     return obj;
 }
 
-fn allocateString(allocator: Allocator, chars: []u8) !*Obj.String {
-    const string = try allocateObj(Obj.String, allocator, .obj_string);
+fn allocateString(vm: *VM, chars: []u8) !*Obj.String {
+    const string = try allocateObj(Obj.String, vm, .obj_string);
     string.data = chars;
     return string;
 }
@@ -80,7 +93,7 @@ pub fn printObj(writer: Writer, value: Value) !void {
     }
 }
 
-pub fn takeString(allocator: Allocator, chars: []u8) !*Obj.String {
-    const result = try allocateString(allocator, chars);
+pub fn takeString(vm: *VM, chars: []u8) !*Obj.String {
+    const result = try allocateString(vm, chars);
     return result;
 }

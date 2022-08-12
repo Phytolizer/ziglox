@@ -203,7 +203,7 @@ const Parser = struct {
 
     fn string(self: *Self) ParseError!void {
         try self.compiler.?.emitConstant(valueMod.objVal(
-            try objectMod.copyString(self.allocator, self.previous.text[1 .. self.previous.text.len - 1]),
+            try objectMod.copyString(self.compiler.?.vm, self.previous.text[1 .. self.previous.text.len - 1]),
         ));
     }
 
@@ -260,13 +260,15 @@ const Parser = struct {
 const Compiler = struct {
     compilingChunk: *Chunk,
     parser: *Parser,
+    vm: *VM,
 
     const Self = @This();
 
-    pub fn init(compilingChunk: *Chunk, parser: *Parser) Self {
+    pub fn init(compilingChunk: *Chunk, parser: *Parser, vm: *VM) Self {
         return Self{
             .compilingChunk = compilingChunk,
             .parser = parser,
+            .vm = vm,
         };
     }
 
@@ -324,10 +326,10 @@ const Compiler = struct {
     }
 };
 
-pub fn compile(source: []const u8, chunk: *Chunk) !bool {
+pub fn compile(source: []const u8, chunk: *Chunk, vm: *VM) !bool {
     var scanner = Scanner.init(source);
     var parser = Parser.init(&scanner, chunk.allocator);
-    var compiler = Compiler.init(chunk, &parser);
+    var compiler = Compiler.init(chunk, &parser, vm);
     parser.compiler = &compiler;
     parser.advance();
     try parser.expression();

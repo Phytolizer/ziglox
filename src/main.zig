@@ -36,7 +36,7 @@ fn repl() !void {
             break;
         }
 
-        _ = try vm.interpret(gAllocator.backing_allocator, &line);
+        _ = try vm.interpret(&line);
     }
 }
 
@@ -45,7 +45,7 @@ fn run(path: []const u8) !void {
     defer gAllocator.backing_allocator.free(source);
     var vm = VM.init(gAllocator.backing_allocator);
     defer vm.deinit();
-    const result = try vm.interpret(gAllocator.backing_allocator, source);
+    const result = try vm.interpret(source);
 
     switch (result) {
         .compile_error => return error.CompileError,
@@ -85,24 +85,7 @@ test "chunk doesn't leak" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
 
-    var chunk = Chunk.init(std.testing.allocator);
-    defer chunk.deinit();
-
-    var constant = try chunk.addConstant(1.2);
-    try chunk.writeOp(.op_constant, 123);
-    try chunk.write(@intCast(u8, constant), 123);
-    constant = try chunk.addConstant(3.4);
-    try chunk.writeOp(.op_constant, 123);
-    try chunk.write(@intCast(u8, constant), 123);
-    try chunk.writeOp(.op_add, 123);
-    constant = try chunk.addConstant(5.6);
-    try chunk.writeOp(.op_constant, 123);
-    try chunk.write(@intCast(u8, constant), 123);
-    try chunk.writeOp(.op_divide, 123);
-    try chunk.writeOp(.op_negate, 123);
-    try chunk.writeOp(.op_return, 123);
-
-    _ = try vm.interpret(std.testing.allocator, &chunk);
+    _ = try vm.interpret("\"test\"");
 }
 
 test "can read file" {

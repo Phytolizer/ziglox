@@ -11,6 +11,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const objectMod = @import("object.zig");
 const memoryMod = @import("memory.zig");
+const Obj = objectMod.Obj;
 
 pub const InterpretResult = enum {
     ok,
@@ -21,20 +22,17 @@ pub const InterpretResult = enum {
 pub const VM = struct {
     const stackMax = 256;
 
-    chunk: ?*Chunk,
-    ip: usize,
-    stack: [stackMax]Value,
-    stackTop: usize,
+    chunk: ?*Chunk = null,
+    ip: usize = 0,
+    stack: [stackMax]Value = undefined,
+    stackTop: usize = 0,
     allocator: Allocator,
+    objects: ?*Obj = null,
 
     const Self = @This();
 
     pub fn init(allocator: Allocator) Self {
         return Self{
-            .chunk = null,
-            .ip = 0,
-            .stack = undefined,
-            .stackTop = 0,
             .allocator = allocator,
         };
     }
@@ -54,14 +52,23 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        _ = self;
+        self.freeObjects();
     }
 
-    pub fn interpret(self: *Self, allocator: Allocator, source: []const u8) !InterpretResult {
-        var chunk = Chunk.init(allocator);
+    fn freeObjects(self: *Self) void {
+        var obj = self.objects;
+        while (obj) |o| {
+            const next = o.next;
+            o.deinit(self.allocator);
+            obj = next;
+        }
+    }
+
+    pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
+        var chunk = Chunk.init(self.allocator);
         defer chunk.deinit();
 
-        if (!(try compiler.compile(source, &chunk))) {
+        if (!(try compiler.compile(source, &chunk, self))) {
             return .compile_error;
         }
 
@@ -196,8 +203,8 @@ pub const VM = struct {
         const length = a.data.len + b.data.len;
         const chars = try self.allocator.alloc(u8, length);
         std.mem.copy(u8, chars, a.data);
-        std.mem.copy(u8, chars[a.data.len ..], b.data);
-        const result = try objectMod.takeString(self.allocator, chars);
+        std.mem.copy(u8, chars[a.data.len..], b.data);
+        const result = try objectMod.takeString(self, chars);
         self.push(valueMod.objVal(&result.obj));
     }
 };
