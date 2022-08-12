@@ -12,6 +12,7 @@ const Allocator = std.mem.Allocator;
 const objectMod = @import("object.zig");
 const memoryMod = @import("memory.zig");
 const Obj = objectMod.Obj;
+const Table = @import("table.zig").Table;
 
 pub const InterpretResult = enum {
     ok,
@@ -28,12 +29,14 @@ pub const VM = struct {
     stackTop: usize = 0,
     allocator: Allocator,
     objects: ?*Obj = null,
+    strings: Table,
 
     const Self = @This();
 
     pub fn init(allocator: Allocator) Self {
         return Self{
             .allocator = allocator,
+            .strings = Table.init(allocator),
         };
     }
 
@@ -53,6 +56,7 @@ pub const VM = struct {
 
     pub fn deinit(self: *Self) void {
         self.freeObjects();
+        self.strings.deinit();
     }
 
     fn freeObjects(self: *Self) void {

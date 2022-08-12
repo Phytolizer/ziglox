@@ -60,13 +60,31 @@ pub const Obj = struct {
     pub const String = struct {
         obj: Obj,
         data: []u8,
+        hash: u32,
     };
 };
 
+fn hashString(chars: []const u8) u32 {
+    var hash: u32 = 2166136261;
+    for (chars) |c| {
+        hash ^= c;
+        hash *%= 16777619;
+    }
+    return hash;
+}
+
 pub fn copyString(vm: *VM, chars: []const u8) !*Obj {
+    const hash = hashString(chars);
+    std.debug.print("[copyString] Hash: {d}\n", .{hash});
+    vm.strings.dump();
+    if (vm.strings.findString(chars, hash)) |interned| {
+        std.debug.print("[copyString] INTERNED STRING: '{s}'", .{interned.data});
+        return &interned.obj;
+    }
+    std.debug.print("[copyString] NEW STRING: '{s}'\n", .{chars});
     const heapChars = try vm.allocator.alloc(u8, chars.len);
     std.mem.copy(u8, heapChars, chars);
-    const str = try allocateString(vm, heapChars);
+    const str = try allocateString(vm, heapChars, hash);
     return &str.obj;
 }
 
@@ -78,9 +96,11 @@ fn allocateObj(comptime T: type, vm: *VM, objectKind: ObjKind) !*T {
     return obj;
 }
 
-fn allocateString(vm: *VM, chars: []u8) !*Obj.String {
+fn allocateString(vm: *VM, chars: []u8, hash: u32) !*Obj.String {
     const string = try allocateObj(Obj.String, vm, .obj_string);
     string.data = chars;
+    string.hash = hash;
+    _ = try vm.strings.set(string, valueMod.nilVal());
     return string;
 }
 
@@ -94,6 +114,15 @@ pub fn printObj(writer: Writer, value: Value) !void {
 }
 
 pub fn takeString(vm: *VM, chars: []u8) !*Obj.String {
-    const result = try allocateString(vm, chars);
+    const hash = hashString(chars);
+    std.debug.print("[takeString] Hash: {d}\n", .{hash});
+    vm.strings.dump();
+    if (vm.strings.findString(chars, hash)) |interned| {
+        std.debug.print("[takeString] INTERNED STRING: '{s}'\n", .{interned.data});
+        vm.allocator.free(chars);
+        return interned;
+    }
+    std.debug.print("[takeString] NEW STRING: '{s}'\n", .{chars});
+    const result = try allocateString(vm, chars, hash);
     return result;
 }
