@@ -101,10 +101,11 @@ pub const Value = union(enum) {
                 sn == on
             else
                 false,
-            Self.obj => |so| if (other.maybeObj()) |oo|
-                so == oo
-            else
-                false,
+            Self.obj => |so| if (other.maybeObj()) |oo| {
+                const a = so.asString();
+                const b = oo.asString();
+                return std.mem.eql(u8, a.data, b.data);
+            } else false,
             Self.nil => other.isNil(),
         };
     }
