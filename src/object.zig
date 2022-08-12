@@ -35,6 +35,8 @@ pub const ObjKind = enum {
 
 pub const Obj = struct {
     kind: ObjKind,
+    // compiler bug: ZSTs don't integrate well with @fieldParentPtr
+    _nothing: u1,
 
     const Self = @This();
 
