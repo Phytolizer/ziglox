@@ -2,11 +2,14 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const memory = @import("memory.zig");
 const Writer = std.fs.File.Writer;
+const objectMod = @import("object.zig");
+const Obj = objectMod.Obj;
 
 pub const Value = union(enum) {
+    nil,
     boolean: bool,
     number: f64,
-    nil,
+    obj: *Obj,
 
     const Self = @This();
 
@@ -24,6 +27,20 @@ pub const Value = union(enum) {
         };
     }
 
+    pub fn asObj(self: Self) !*Obj {
+        return switch (self) {
+            Self.obj => |o| o,
+            else => error.NotAnObj,
+        };
+    }
+
+    pub fn isNil(self: Self) bool {
+        return switch (self) {
+            Self.nil => true,
+            else => false,
+        };
+    }
+
     pub fn isBool(self: Self) bool {
         return switch (self) {
             Self.boolean => true,
@@ -38,9 +55,9 @@ pub const Value = union(enum) {
         };
     }
 
-    pub fn isNil(self: Self) bool {
+    pub fn isObj(self: Self) bool {
         return switch (self) {
-            Self.nil => true,
+            Self.obj => true,
             else => false,
         };
     }
@@ -55,6 +72,13 @@ pub const Value = union(enum) {
     pub fn maybeNumber(self: Self) ?f64 {
         return switch (self) {
             Self.number => |n| n,
+            else => null,
+        };
+    }
+
+    pub fn maybeObj(self: Self) ?*Obj {
+        return switch (self) {
+            Self.obj => |o| o,
             else => null,
         };
     }
@@ -77,21 +101,29 @@ pub const Value = union(enum) {
                 sn == on
             else
                 false,
+            Self.obj => |so| if (other.maybeObj()) |oo|
+                so == oo
+            else
+                false,
             Self.nil => other.isNil(),
         };
     }
 };
 
-pub fn boolVal(b: bool) Value {
-    return Value{ .boolean = b };
-}
-
 pub fn nilVal() Value {
     return Value.nil;
 }
 
+pub fn boolVal(b: bool) Value {
+    return Value{ .boolean = b };
+}
+
 pub fn numberVal(n: f64) Value {
     return Value{ .number = n };
+}
+
+pub fn objVal(o: *Obj) Value {
+    return Value{ .obj = o };
 }
 
 pub const ValueArray = struct {
@@ -139,6 +171,9 @@ pub fn printValue(writer: Writer, value: Value) !void {
         },
         Value.number => |n| {
             try writer.print("{d}", .{n});
+        },
+        Value.obj => {
+            try objectMod.printObj(writer, value);
         },
     }
 }

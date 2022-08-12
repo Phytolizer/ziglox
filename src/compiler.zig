@@ -11,6 +11,8 @@ const valueMod = @import("value.zig");
 const Value = valueMod.Value;
 const common = @import("common.zig");
 const debug = @import("debug.zig");
+const objectMod = @import("object.zig");
+const Allocator = std.mem.Allocator;
 
 const Precedence = enum(u8) {
     prec_none,
@@ -98,6 +100,9 @@ fn getRule(kind: TokenKind) ParseRule {
             .infix = Parser.binary,
             .precedence = .prec_comparison,
         },
+        .tk_string => .{
+            .prefix = Parser.string,
+        },
         else => .{},
     };
 }
@@ -109,10 +114,11 @@ const Parser = struct {
     hadError: bool,
     panicMode: bool,
     compiler: ?*Compiler,
+    allocator: Allocator,
 
     const Self = @This();
 
-    pub fn init(scanner: *Scanner) Self {
+    pub fn init(scanner: *Scanner, allocator: Allocator) Self {
         return Self{
             .scanner = scanner,
             .current = undefined,
@@ -120,6 +126,7 @@ const Parser = struct {
             .hadError = false,
             .panicMode = false,
             .compiler = null,
+            .allocator = allocator,
         };
     }
 
@@ -192,6 +199,12 @@ const Parser = struct {
             .tk_nil => try self.compiler.?.emitOp(.op_nil),
             else => unreachable,
         }
+    }
+
+    fn string(self: *Self) ParseError!void {
+        try self.compiler.?.emitConstant(valueMod.objVal(
+            try objectMod.copyString(self.allocator, self.previous.text[1 .. self.previous.text.len - 1]),
+        ));
     }
 
     fn unary(self: *Self) ParseError!void {
@@ -313,7 +326,7 @@ const Compiler = struct {
 
 pub fn compile(source: []const u8, chunk: *Chunk) !bool {
     var scanner = Scanner.init(source);
-    var parser = Parser.init(&scanner);
+    var parser = Parser.init(&scanner, chunk.allocator);
     var compiler = Compiler.init(chunk, &parser);
     parser.compiler = &compiler;
     parser.advance();
