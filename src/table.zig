@@ -126,7 +126,11 @@ pub const Table = struct {
         var tombstone: ?*Entry = null;
         while (true) {
             const entry = &entries[index];
-            if (entry.key == null) {
+            if (entry.key) |entryKey| {
+                if (entryKey == key) {
+                    return entry;
+                }
+            } else {
                 if (entry.value.isNil()) {
                     return if (tombstone) |t|
                         t
@@ -136,10 +140,6 @@ pub const Table = struct {
                     if (tombstone == null) {
                         tombstone = entry;
                     }
-                }
-            } else |entryKey| {
-                if (entryKey == key) {
-                    return entry;
                 }
             }
 
