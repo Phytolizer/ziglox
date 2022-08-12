@@ -72,7 +72,6 @@ pub const Table = struct {
             self.count += 1;
         }
 
-        std.debug.print("[set] Setting key: '{s}'\n", .{key.data});
         entry.key = key;
         entry.value = value;
         return isNewKey;
@@ -102,40 +101,23 @@ pub const Table = struct {
     }
 
     pub fn findString(self: *Self, chars: []const u8, hash: u32) ?*Obj.String {
-        std.debug.print("[findString] Searching for '{s}'\n", .{chars});
-        if (self.entries == null) {
-            return null;
-        }
-
-        var index = @as(usize, hash) % self.entries.?.len;
-        while (true) {
-            std.debug.print("[findString] Index: {d}\n", .{index});
-            const entry = &self.entries.?[index];
-            if (entry.key == null) {
-                if (entry.value.isNil()) {
-                    std.debug.assert(entry.key == null);
-                    std.debug.print("[findString] Found empty entry\n", .{});
-                    return null;
-                }
-            } else |entryKey| if (std.mem.eql(entryKey.data, chars)) {
-                std.debug.print("[findString] Found it!\n");
-                return entryKey;
-            }
-
-            index = (index + 1) % self.entries.?.len;
-        }
-    }
-
-    pub fn dump(self: *Self) void {
-        std.debug.print("[dump] Dumping table\n", .{});
         if (self.entries) |entries| {
-            for (entries) |entry| {
-                if (entry.key) |key| {
-                    std.debug.print("[dump] Key: '{s}'\n", .{key.data});
+            var index = @as(usize, hash) % entries.len;
+            while (true) {
+                const entry = &entries[index];
+                if (entry.key) |entryKey| {
+                    if (std.mem.eql(u8, entryKey.data, chars)) {
+                        return entryKey;
+                    }
                 } else {
-                    std.debug.print("[dump] Key: null\n", .{});
+                    if (entry.value.isNil()) {
+                        return null;
+                    }
                 }
+                index = (index + 1) % entries.len;
             }
+        } else {
+            return null;
         }
     }
 
@@ -143,11 +125,9 @@ pub const Table = struct {
         var index = @as(usize, key.hash) % entries.len;
         var tombstone: ?*Entry = null;
         while (true) {
-            std.debug.print("[findEntry] Index: {d}\n", .{index});
             const entry = &entries[index];
             if (entry.key == null) {
                 if (entry.value.isNil()) {
-                    std.debug.print("[findEntry] Not found\n", .{});
                     return if (tombstone) |t|
                         t
                     else
@@ -158,7 +138,6 @@ pub const Table = struct {
                     }
                 }
             } else |entryKey| {
-                std.debug.print("[findEntry] Comparing keys: {p} {p}\n", .{ entryKey, key });
                 if (entryKey == key) {
                     return entry;
                 }
@@ -169,7 +148,6 @@ pub const Table = struct {
     }
 
     fn adjustCapacity(self: *Self, capacity: usize) !void {
-        std.debug.print("[adjustCapacity] ADJUSTING CAPACITY: {d} -> {d}\n", .{ self.getCapacity(), capacity });
         const entries = try self.allocator.alloc(Entry, capacity);
         for (entries) |*entry| {
             entry.key = null;

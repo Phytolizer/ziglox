@@ -75,13 +75,9 @@ fn hashString(chars: []const u8) u32 {
 
 pub fn copyString(vm: *VM, chars: []const u8) !*Obj {
     const hash = hashString(chars);
-    std.debug.print("[copyString] Hash: {d}\n", .{hash});
-    vm.strings.dump();
     if (vm.strings.findString(chars, hash)) |interned| {
-        std.debug.print("[copyString] INTERNED STRING: '{s}'", .{interned.data});
         return &interned.obj;
     }
-    std.debug.print("[copyString] NEW STRING: '{s}'\n", .{chars});
     const heapChars = try vm.allocator.alloc(u8, chars.len);
     std.mem.copy(u8, heapChars, chars);
     const str = try allocateString(vm, heapChars, hash);
@@ -115,14 +111,10 @@ pub fn printObj(writer: Writer, value: Value) !void {
 
 pub fn takeString(vm: *VM, chars: []u8) !*Obj.String {
     const hash = hashString(chars);
-    std.debug.print("[takeString] Hash: {d}\n", .{hash});
-    vm.strings.dump();
     if (vm.strings.findString(chars, hash)) |interned| {
-        std.debug.print("[takeString] INTERNED STRING: '{s}'\n", .{interned.data});
         vm.allocator.free(chars);
         return interned;
     }
-    std.debug.print("[takeString] NEW STRING: '{s}'\n", .{chars});
     const result = try allocateString(vm, chars, hash);
     return result;
 }
