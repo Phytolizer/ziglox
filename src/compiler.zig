@@ -30,7 +30,7 @@ const Precedence = enum(u8) {
     prec_primary,
 };
 
-const ParseError = std.mem.Allocator.Error || std.fmt.ParseFloatError;
+const ParseError = std.mem.Allocator.Error || std.fmt.ParseFloatError || std.fs.File.WriteError;
 
 const ParseFn = ?fn (parser: *Parser, canAssign: bool) ParseError!void;
 
@@ -330,7 +330,9 @@ const Parser = struct {
     }
 
     pub fn declaration(self: *Self) ParseError!void {
-        if (self.match(.tk_var)) {
+        if (self.match(.tk_fun)) {
+            try self.funDeclaration();
+        } else if (self.match(.tk_var)) {
             try self.varDeclaration();
         } else {
             try self.statement();
@@ -339,6 +341,29 @@ const Parser = struct {
         if (self.panicMode) {
             self.synchronize();
         }
+    }
+
+    fn funDeclaration(self: *Self) ParseError!void {
+        const global = try self.parseVariable("Expect function name.");
+        self.compiler.?.markInitialized();
+        try self.function(.k_function);
+        try self.compiler.?.defineVariable(global);
+    }
+
+    fn function(self: *Self, kind: FunctionKind) ParseError!void {
+        var compiler = try Compiler.init(self.compiler, self, self.compiler.?.vm, kind);
+        self.beginScope();
+
+        self.consume(.tk_left_paren, "Expect '(' after function name.");
+        self.consume(.tk_right_paren, "Expect ')' after parameters.");
+        self.consume(.tk_left_brace, "Expect '{' before function body.");
+        try self.block();
+
+        const f = try compiler.end();
+        try self.compiler.?.emitOp(.op_constant);
+        try self.compiler.?.emitByte(
+            try self.compiler.?.makeConstant(valueMod.objVal(&f.obj)),
+        );
     }
 
     fn parseVariable(self: *Self, comptime errorMessage: []const u8) !u8 {
@@ -546,6 +571,7 @@ const FunctionKind = enum {
 };
 
 const Compiler = struct {
+    enclosing: ?*Compiler,
     parser: *Parser,
     vm: *VM,
     locals: [u8Count]Local = undefined,
@@ -556,8 +582,9 @@ const Compiler = struct {
 
     const Self = @This();
 
-    pub fn init(parser: *Parser, vm: *VM, kind: FunctionKind) !Self {
+    pub fn init(enclosing: ?*Compiler, parser: *Parser, vm: *VM, kind: FunctionKind) !Self {
         var result = Self{
+            .enclosing = enclosing,
             .parser = parser,
             .vm = vm,
             .function = try objectMod.initFunction(vm),
@@ -647,6 +674,9 @@ const Compiler = struct {
     }
 
     fn markInitialized(self: *Self) void {
+        if (self.scopeDepth == 0) {
+            return;
+        }
         self.locals[self.localCount - 1].depth = self.scopeDepth;
     }
 
@@ -737,7 +767,7 @@ const Compiler = struct {
 pub fn compile(source: []const u8, vm: *VM) !?*Obj.Function {
     var scanner = Scanner.init(source);
     var parser = Parser.init(&scanner, vm.allocator);
-    var compiler = try Compiler.init(&parser, vm, .k_script);
+    var compiler = try Compiler.init(null, &parser, vm, .k_script);
     parser.compiler = &compiler;
     parser.advance();
     while (!parser.match(.tk_eof)) {
