@@ -42,12 +42,11 @@ pub const Table = struct {
     }
 
     pub fn get(self: *Self, key: *Obj.String) ?Value {
-        if (!self.entries) {
-            return null;
-        }
-        const entry = findEntry(self.entries, key);
-        if (entry.key) {
-            return entry.value;
+        if (self.entries) |entries| {
+            const entry = findEntry(entries, key);
+            if (entry.key) |_| {
+                return entry.value;
+            }
         }
 
         return null;

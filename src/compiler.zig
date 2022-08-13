@@ -103,6 +103,9 @@ fn getRule(kind: TokenKind) ParseRule {
         .tk_string => .{
             .prefix = Parser.string,
         },
+        .tk_identifier => .{
+            .prefix = Parser.variable,
+        },
         else => .{},
     };
 }
@@ -205,6 +208,16 @@ const Parser = struct {
         try self.compiler.?.emitConstant(valueMod.objVal(
             try objectMod.copyString(self.compiler.?.vm, self.previous.text[1 .. self.previous.text.len - 1]),
         ));
+    }
+
+    fn variable(self: *Self) ParseError!void {
+        try self.namedVariable(&self.previous);
+    }
+
+    fn namedVariable(self: *Self, name: *Token) !void {
+        const arg = try self.compiler.?.identifierConstant(name);
+        try self.compiler.?.emitOp(.op_get_global);
+        try self.compiler.?.emitByte(arg);
     }
 
     fn unary(self: *Self) ParseError!void {

@@ -116,7 +116,7 @@ pub const VM = struct {
         return self.stack[self.stackTop - distance - 1];
     }
 
-    fn runtimeError(self: *Self, comptime format: []const u8, comptime args: anytype) void {
+    fn runtimeError(self: *Self, comptime format: []const u8, args: anytype) void {
         std.debug.print(format, args);
         std.debug.print("\n", .{});
 
@@ -164,6 +164,16 @@ pub const VM = struct {
                 },
                 .op_pop => {
                     _ = self.pop();
+                },
+                .op_get_global => {
+                    const name = self.readString();
+                    const value = if (self.globals.get(name)) |v|
+                        v
+                    else {
+                        self.runtimeError("Undefined variable '{s}'.", .{name.data});
+                        return .runtime_error;
+                    };
+                    self.push(value);
                 },
                 .op_define_global => {
                     const name = self.readString();
