@@ -106,6 +106,12 @@ fn getRule(kind: TokenKind) ParseRule {
         .tk_identifier => .{
             .prefix = Parser.variable,
         },
+        .tk_and => .{
+            .infix = Parser.parseAnd,
+        },
+        .tk_or => .{
+            .infix = Parser.parseOr,
+        },
         else => .{},
     };
 }
@@ -275,6 +281,28 @@ const Parser = struct {
             .tk_slash => try self.compiler.?.emitOp(.op_divide),
             else => unreachable,
         }
+    }
+
+    fn parseAnd(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
+        const endJump = try self.compiler.?.emitJump(.op_jump_if_false);
+
+        try self.compiler.?.emitOp(.op_pop);
+        try self.parsePrecedence(.prec_and);
+
+        self.compiler.?.patchJump(endJump);
+    }
+
+    fn parseOr(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
+        const elseJump = try self.compiler.?.emitJump(.op_jump_if_false);
+        const endJump = try self.compiler.?.emitJump(.op_jump);
+
+        self.compiler.?.patchJump(elseJump);
+        try self.compiler.?.emitOp(.op_pop);
+
+        try self.parsePrecedence(.prec_or);
+        self.compiler.?.patchJump(endJump);
     }
 
     fn parsePrecedence(self: *Self, precedence: Precedence) ParseError!void {
