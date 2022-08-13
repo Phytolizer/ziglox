@@ -77,18 +77,17 @@ pub const Table = struct {
     }
 
     pub fn delete(self: *Self, key: *Obj.String) bool {
-        if (self.entries == null) {
-            return false;
-        }
+        if (self.entries) |entries| {
+            const entry = findEntry(entries, key);
+            if (entry.key == null) {
+                return false;
+            }
 
-        const entry = findEntry(self.entries, key);
-        if (entry.key == null) {
-            return false;
+            entry.key = null;
+            entry.value = valueMod.boolVal(true);
+            return true;
         }
-
-        entry.key = null;
-        entry.value = valueMod.boolVal(true);
-        return true;
+        return false;
     }
 
     pub fn addAll(from: *Self, to: *Self) !void {

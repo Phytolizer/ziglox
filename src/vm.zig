@@ -180,6 +180,15 @@ pub const VM = struct {
                     _ = try self.globals.set(name, self.peek(0));
                     _ = self.pop();
                 },
+                .op_set_global => {
+                    const name = self.readString();
+                    if (try self.globals.set(name, self.peek(0))) {
+                        // did not exist before, so undo what was just done
+                        _ = self.globals.delete(name);
+                        self.runtimeError("Undefined variable '{s}'.\n", .{name.data});
+                        return .runtime_error;
+                    }
+                },
                 .op_equal => {
                     const b = self.pop();
                     const a = self.pop();

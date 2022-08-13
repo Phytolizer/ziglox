@@ -31,6 +31,7 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
         .op_pop => return simpleInstruction(writer, "OP_POP", offset),
         .op_get_global => return constantInstruction(writer, "OP_GET_GLOBAL", chunk, offset),
         .op_define_global => return constantInstruction(writer, "OP_DEFINE_GLOBAL", chunk, offset),
+        .op_set_global => return constantInstruction(writer, "OP_SET_GLOBAL", chunk, offset),
         .op_equal => return simpleInstruction(writer, "OP_EQUAL", offset),
         .op_less => return simpleInstruction(writer, "OP_LESS", offset),
         .op_greater => return simpleInstruction(writer, "OP_GREATER", offset),

@@ -216,7 +216,13 @@ const Parser = struct {
 
     fn namedVariable(self: *Self, name: *Token) !void {
         const arg = try self.compiler.?.identifierConstant(name);
-        try self.compiler.?.emitOp(.op_get_global);
+
+        if (self.match(.tk_equal)) {
+            try self.expression();
+            try self.compiler.?.emitOp(.op_set_global);
+        } else {
+            try self.compiler.?.emitOp(.op_get_global);
+        }
         try self.compiler.?.emitByte(arg);
     }
 
