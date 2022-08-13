@@ -352,14 +352,29 @@ const Parser = struct {
 
     fn function(self: *Self, kind: FunctionKind) ParseError!void {
         var compiler = try Compiler.init(self.compiler, self, self.compiler.?.vm, kind);
+        self.compiler = &compiler;
         self.beginScope();
 
         self.consume(.tk_left_paren, "Expect '(' after function name.");
+        if (!self.check(.tk_right_paren)) {
+            while (true) {
+                self.compiler.?.function.arity += 1;
+                if (self.compiler.?.function.arity > std.math.maxInt(u8)) {
+                    self.errorAtCurrent("Can't have more than 255 parameters.");
+                }
+                const constant = try self.parseVariable("Expect parameter name.");
+                try self.compiler.?.defineVariable(constant);
+                if (!self.match(.tk_comma)) {
+                    break;
+                }
+            }
+        }
         self.consume(.tk_right_paren, "Expect ')' after parameters.");
         self.consume(.tk_left_brace, "Expect '{' before function body.");
         try self.block();
 
         const f = try compiler.end();
+        self.compiler = compiler.enclosing;
         try self.compiler.?.emitOp(.op_constant);
         try self.compiler.?.emitByte(
             try self.compiler.?.makeConstant(valueMod.objVal(&f.obj)),
@@ -590,6 +605,11 @@ const Compiler = struct {
             .function = try objectMod.initFunction(vm),
             .kind = kind,
         };
+
+        if (kind != .k_script) {
+            result.function.name = (try objectMod.copyString(vm, parser.previous.text)).asString() catch
+                unreachable;
+        }
 
         const local = &result.locals[result.localCount];
         result.localCount += 1;
