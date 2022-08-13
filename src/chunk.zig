@@ -11,6 +11,7 @@ pub const OpCode = enum(u8) {
     op_nil,
     op_true,
     op_false,
+    op_pop,
     op_equal,
     op_greater,
     op_less,
@@ -19,6 +20,7 @@ pub const OpCode = enum(u8) {
     op_multiply,
     op_divide,
     op_not,
+    op_print,
     op_return,
 };
 

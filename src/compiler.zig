@@ -255,6 +255,43 @@ const Parser = struct {
             try infixRule.?(self);
         }
     }
+
+    pub fn declaration(self: *Self) !void {
+        try self.statement();
+    }
+
+    fn statement(self: *Self) !void {
+        if (self.match(.tk_print)) {
+            try self.printStatement();
+        } else {
+            try self.expressionStatement();
+        }
+    }
+
+    fn expressionStatement(self: *Self) !void {
+        try self.expression();
+        self.consume(.tk_semicolon, "Expect ';' after expression.");
+        try self.compiler.?.emitOp(.op_pop);
+    }
+
+    pub fn match(self: *Self, kind: TokenKind) bool {
+        if (!self.check(kind)) {
+            return false;
+        }
+
+        self.advance();
+        return true;
+    }
+
+    fn check(self: *Self, kind: TokenKind) bool {
+        return self.current.kind == kind;
+    }
+
+    fn printStatement(self: *Self) !void {
+        try self.expression();
+        self.consume(.tk_semicolon, "Expect ';' after value.");
+        try self.compiler.?.emitOp(.op_print);
+    }
 };
 
 const Compiler = struct {
@@ -332,8 +369,9 @@ pub fn compile(source: []const u8, chunk: *Chunk, vm: *VM) !bool {
     var compiler = Compiler.init(chunk, &parser, vm);
     parser.compiler = &compiler;
     parser.advance();
-    try parser.expression();
-    parser.consume(.tk_eof, "Expect end of expression.");
+    while (!parser.match(.tk_eof)) {
+        try parser.declaration();
+    }
     try compiler.end();
     return !parser.hadError;
 }

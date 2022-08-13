@@ -85,7 +85,7 @@ test "VM doesn't leak" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
 
-    const result = try vm.interpret("\"te\" + \"st\" == \"test\"");
+    const result = try vm.interpret("\"te\" + \"st\" == \"test\";");
     std.debug.assert(result == .ok);
 }
 

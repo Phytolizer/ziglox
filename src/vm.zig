@@ -153,6 +153,9 @@ pub const VM = struct {
                 .op_false => {
                     self.push(valueMod.boolVal(false));
                 },
+                .op_pop => {
+                    _ = self.pop();
+                },
                 .op_equal => {
                     const b = self.pop();
                     const a = self.pop();
@@ -191,9 +194,11 @@ pub const VM = struct {
                 .op_not => {
                     self.push(valueMod.boolVal(self.pop().isFalsey()));
                 },
-                .op_return => {
+                .op_print => {
                     try valueMod.printValue(stdout, self.pop());
                     try stdout.writeAll("\n");
+                },
+                .op_return => {
                     return .ok;
                 },
             }

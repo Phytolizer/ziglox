@@ -28,6 +28,7 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
         .op_nil => return simpleInstruction(writer, "OP_NIL", offset),
         .op_true => return simpleInstruction(writer, "OP_TRUE", offset),
         .op_false => return simpleInstruction(writer, "OP_FALSE", offset),
+        .op_pop => return simpleInstruction(writer, "OP_POP", offset),
         .op_equal => return simpleInstruction(writer, "OP_EQUAL", offset),
         .op_less => return simpleInstruction(writer, "OP_LESS", offset),
         .op_greater => return simpleInstruction(writer, "OP_GREATER", offset),
@@ -36,6 +37,7 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
         .op_multiply => return simpleInstruction(writer, "OP_MULTIPLY", offset),
         .op_divide => return simpleInstruction(writer, "OP_DIVIDE", offset),
         .op_not => return simpleInstruction(writer, "OP_NOT", offset),
+        .op_print => return simpleInstruction(writer, "OP_PRINT", offset),
         .op_return => return simpleInstruction(writer, "OP_RETURN", offset),
     }
 }

@@ -1,1 +1,1 @@
-"te" + "st" == "test"
+print "te" + "st" == "test";
