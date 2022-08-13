@@ -350,7 +350,7 @@ const Parser = struct {
         return try self.compiler.?.identifierConstant(&self.previous);
     }
 
-    fn varDeclaration(self: *Self) !void {
+    fn varDeclaration(self: *Self) ParseError!void {
         const global = try self.parseVariable("Expect variable name.");
 
         if (self.match(.tk_equal)) {
@@ -389,6 +389,8 @@ const Parser = struct {
     fn statement(self: *Self) ParseError!void {
         if (self.match(.tk_print)) {
             try self.printStatement();
+        } else if (self.match(.tk_for)) {
+            try self.forStatement();
         } else if (self.match(.tk_if)) {
             try self.ifStatement();
         } else if (self.match(.tk_left_brace)) {
@@ -418,6 +420,50 @@ const Parser = struct {
             try self.statement();
         }
         self.compiler.?.patchJump(elseJump);
+    }
+
+    fn forStatement(self: *Self) ParseError!void {
+        self.beginScope();
+        self.consume(.tk_left_paren, "Expect '(' after 'for'.");
+        if (self.match(.tk_semicolon)) {
+            // No initializer.
+        } else if (self.match(.tk_var)) {
+            try self.varDeclaration();
+        } else {
+            try self.expressionStatement();
+        }
+
+        var loopStart = self.compiler.?.currentChunk().count;
+        var exitJump: ?usize = null;
+        if (!self.match(.tk_semicolon)) {
+            try self.expression();
+            self.consume(.tk_semicolon, "Expect ';' after loop condition.");
+
+            exitJump = try self.compiler.?.emitJump(.op_jump_if_false);
+            try self.compiler.?.emitOp(.op_pop);
+        }
+
+        if (!self.match(.tk_right_paren)) {
+            const bodyJump = try self.compiler.?.emitJump(.op_jump);
+            const incrementStart = self.compiler.?.currentChunk().count;
+            try self.expression();
+            try self.compiler.?.emitOp(.op_pop);
+            self.consume(.tk_right_paren, "Expect ')' after for clauses.");
+
+            try self.compiler.?.emitLoop(loopStart);
+            loopStart = incrementStart;
+            self.compiler.?.patchJump(bodyJump);
+        }
+
+        try self.statement();
+        try self.compiler.?.emitLoop(loopStart);
+
+        if (exitJump) |ej| {
+            self.compiler.?.patchJump(ej);
+            try self.compiler.?.emitOp(.op_pop);
+        }
+
+        try self.endScope();
     }
 
     fn whileStatement(self: *Self) ParseError!void {
@@ -461,7 +507,7 @@ const Parser = struct {
         }
     }
 
-    fn expressionStatement(self: *Self) !void {
+    fn expressionStatement(self: *Self) ParseError!void {
         try self.expression();
         self.consume(.tk_semicolon, "Expect ';' after expression.");
         try self.compiler.?.emitOp(.op_pop);
