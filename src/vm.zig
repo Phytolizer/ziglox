@@ -26,6 +26,7 @@ const CallFrame = struct {
     code: []const u8,
     ip: usize,
     slots: []Value,
+    slotOffset: usize,
 };
 
 pub const VM = struct {
@@ -85,12 +86,7 @@ pub const VM = struct {
         const function = try compiler.compile(source, self);
         if (function) |f| {
             self.push(valueMod.objVal(&f.obj));
-            const frame = &self.frames[self.frameCount];
-            self.frameCount += 1;
-            frame.function = f;
-            frame.code = f.chunk.code.?;
-            frame.ip = 0;
-            frame.slots = &self.stack;
+            _ = self.call(f, 0);
         } else {
             return .compile_error;
         }
@@ -139,16 +135,24 @@ pub const VM = struct {
         std.debug.print(format, args);
         std.debug.print("\n", .{});
 
-        const frame = &self.frames[self.frameCount - 1];
-        const instruction = frame.ip - 1;
-        const line = frame.function.chunk.lines.?[instruction];
-        std.debug.print("[line {d}] in script\n", .{line});
+        var i = self.frameCount;
+        while (i > 0) : (i -= 1) {
+            const frame = &self.frames[i - 1];
+            const f = frame.function;
+            const instruction = frame.ip - 1;
+            std.debug.print("[line {d}] in ", .{f.chunk.lines.?[instruction]});
+            if (f.name) |name| {
+                std.debug.print("{s}()\n", .{name.data});
+            } else {
+                std.debug.print("script\n", .{});
+            }
+        }
         self.resetStack();
     }
 
     fn run(self: *Self) !InterpretResult {
         const stdout = std.io.getStdOut().writer();
-        const frame = &self.frames[self.frameCount - 1];
+        var frame = &self.frames[self.frameCount - 1];
         while (true) {
             if (common.debugTraceExecution) {
                 try stdout.writeAll("          ");
@@ -274,11 +278,60 @@ pub const VM = struct {
                     const offset = readShort(frame);
                     frame.ip -= offset;
                 },
+                .op_call => {
+                    const argCount = readByte(frame);
+                    if (!self.callValue(self.peek(@as(usize, argCount)), argCount)) {
+                        return .runtime_error;
+                    }
+                    frame = &self.frames[self.frameCount - 1];
+                },
                 .op_return => {
-                    return .ok;
+                    const result = self.pop();
+                    self.frameCount -= 1;
+                    if (self.frameCount == 0) {
+                        _ = self.pop();
+                        return .ok;
+                    }
+
+                    self.stackTop = frame.slotOffset;
+                    self.push(result);
+                    frame = &self.frames[self.frameCount - 1];
                 },
             }
         }
+    }
+
+    fn callValue(self: *Self, callee: Value, argCount: u8) bool {
+        if (callee.maybeObj()) |obj| {
+            switch (obj.kind) {
+                .obj_function => {
+                    return self.call(obj.asFunction() catch unreachable, argCount);
+                },
+                else => {},
+            }
+        }
+        // Non-callable object type.
+        self.runtimeError("Can only call functions and classes.", .{});
+        return false;
+    }
+
+    fn call(self: *Self, f: *Obj.Function, argCount: u8) bool {
+        if (@as(usize, argCount) != f.arity) {
+            self.runtimeError("Expected {d} arguments but got {d}.", .{ f.arity, argCount });
+            return false;
+        }
+        if (self.frameCount == framesMax) {
+            self.runtimeError("Stack overflow.", .{});
+            return false;
+        }
+        const frame = &self.frames[self.frameCount];
+        self.frameCount += 1;
+        frame.function = f;
+        frame.ip = 0;
+        frame.code = f.chunk.code.?;
+        frame.slotOffset = self.stackTop - @as(usize, argCount) - 1;
+        frame.slots = self.stack[frame.slotOffset..];
+        return true;
     }
 
     fn concatenate(self: *Self) !void {

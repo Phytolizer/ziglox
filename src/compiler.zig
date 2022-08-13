@@ -44,7 +44,8 @@ fn getRule(kind: TokenKind) ParseRule {
     return switch (kind) {
         .tk_left_paren => .{
             .prefix = Parser.grouping,
-            .precedence = .prec_none,
+            .infix = Parser.call,
+            .precedence = .prec_call,
         },
         .tk_minus => .{
             .prefix = Parser.unary,
@@ -203,6 +204,31 @@ const Parser = struct {
         _ = canAssign;
         try self.expression();
         self.consume(.tk_right_paren, "Expect ')' after expression.");
+    }
+
+    fn call(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
+        const argCount = try self.argumentList();
+        try self.compiler.?.emitOp(.op_call);
+        try self.compiler.?.emitByte(argCount);
+    }
+
+    fn argumentList(self: *Self) ParseError!u8 {
+        var argCount: u8 = 0;
+        if (!self.check(.tk_right_paren)) {
+            while (true) {
+                try self.expression();
+                if (argCount == std.math.maxInt(u8)) {
+                    self.emitError("Can't have more than 255 arguments.");
+                }
+                argCount += 1;
+                if (!self.match(.tk_comma)) {
+                    break;
+                }
+            }
+        }
+        self.consume(.tk_right_paren, "Expect ')' after arguments.");
+        return argCount;
     }
 
     fn literal(self: *Self, canAssign: bool) ParseError!void {
@@ -631,7 +657,7 @@ const Compiler = struct {
     }
 
     fn emitReturn(self: *Self) !void {
-        try self.emitOp(.op_return);
+        try self.emitOps(.op_nil, .op_return);
     }
 
     pub fn identifierConstant(self: *Self, name: *Token) !u8 {

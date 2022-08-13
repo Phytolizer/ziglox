@@ -1,4 +1,8 @@
-fun test() {
-    print("Hello, world!");
+fun a() { b(); }
+fun b() { c(); }
+fun c() {
+    print "Hello, World!";
 }
-print test;
+
+a();
+b();
