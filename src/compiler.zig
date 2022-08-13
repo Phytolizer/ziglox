@@ -30,7 +30,7 @@ const Precedence = enum(u8) {
 
 const ParseError = std.mem.Allocator.Error || std.fmt.ParseFloatError;
 
-const ParseFn = ?fn (parser: *Parser) ParseError!void;
+const ParseFn = ?fn (parser: *Parser, canAssign: bool) ParseError!void;
 
 const ParseRule = struct {
     prefix: ParseFn = null,
@@ -185,17 +185,20 @@ const Parser = struct {
         try self.parsePrecedence(.prec_assignment);
     }
 
-    fn number(self: *Self) ParseError!void {
+    fn number(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
         const value = try std.fmt.parseFloat(f64, self.previous.text);
         try self.compiler.?.emitConstant(valueMod.numberVal(value));
     }
 
-    fn grouping(self: *Self) ParseError!void {
+    fn grouping(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
         try self.expression();
         self.consume(.tk_right_paren, "Expect ')' after expression.");
     }
 
-    fn literal(self: *Self) ParseError!void {
+    fn literal(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
         switch (self.previous.kind) {
             .tk_false => try self.compiler.?.emitOp(.op_false),
             .tk_true => try self.compiler.?.emitOp(.op_true),
@@ -204,20 +207,21 @@ const Parser = struct {
         }
     }
 
-    fn string(self: *Self) ParseError!void {
+    fn string(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
         try self.compiler.?.emitConstant(valueMod.objVal(
             try objectMod.copyString(self.compiler.?.vm, self.previous.text[1 .. self.previous.text.len - 1]),
         ));
     }
 
-    fn variable(self: *Self) ParseError!void {
-        try self.namedVariable(&self.previous);
+    fn variable(self: *Self, canAssign: bool) ParseError!void {
+        try self.namedVariable(&self.previous, canAssign);
     }
 
-    fn namedVariable(self: *Self, name: *Token) !void {
+    fn namedVariable(self: *Self, name: *Token, canAssign: bool) !void {
         const arg = try self.compiler.?.identifierConstant(name);
 
-        if (self.match(.tk_equal)) {
+        if (canAssign and self.match(.tk_equal)) {
             try self.expression();
             try self.compiler.?.emitOp(.op_set_global);
         } else {
@@ -226,7 +230,8 @@ const Parser = struct {
         try self.compiler.?.emitByte(arg);
     }
 
-    fn unary(self: *Self) ParseError!void {
+    fn unary(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
         const operatorKind = self.previous.kind;
 
         try self.parsePrecedence(.prec_unary);
@@ -238,7 +243,8 @@ const Parser = struct {
         }
     }
 
-    fn binary(self: *Self) ParseError!void {
+    fn binary(self: *Self, canAssign: bool) ParseError!void {
+        _ = canAssign;
         const operatorKind = self.previous.kind;
         const rule = getRule(operatorKind);
         try self.parsePrecedence(@intToEnum(Precedence, @enumToInt(rule.precedence) + 1));
@@ -266,12 +272,17 @@ const Parser = struct {
             return;
         }
 
-        try prefixRule.?(self);
+        const canAssign = @enumToInt(precedence) <= @enumToInt(Precedence.prec_assignment);
+        try prefixRule.?(self, canAssign);
 
         while (@enumToInt(precedence) <= @enumToInt(getRule(self.current.kind).precedence)) {
             self.advance();
             const infixRule = getRule(self.previous.kind).infix;
-            try infixRule.?(self);
+            try infixRule.?(self, canAssign);
+        }
+
+        if (canAssign and match(self, .tk_equal)) {
+            self.emitError("Invalid assignment target.");
         }
     }
 
