@@ -475,6 +475,9 @@ const Parser = struct {
     }
 
     fn returnStatement(self: *Self) ParseError!void {
+        if (self.compiler.?.kind == .k_script) {
+            self.emitError("Can't return from top-level code.");
+        }
         if (self.match(.tk_semicolon)) {
             try self.compiler.?.emitReturn();
         } else {
