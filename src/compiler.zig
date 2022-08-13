@@ -258,6 +258,33 @@ const Parser = struct {
 
     pub fn declaration(self: *Self) !void {
         try self.statement();
+
+        if (self.panicMode) {
+            self.synchronize();
+        }
+    }
+
+    fn synchronize(self: *Self) void {
+        self.panicMode = false;
+        while (self.current.kind != .tk_eof) {
+            if (self.previous.kind == .tk_semicolon) {
+                return;
+            }
+
+            switch (self.current.kind) {
+                .tk_class,
+                .tk_fun,
+                .tk_var,
+                .tk_for,
+                .tk_if,
+                .tk_while,
+                .tk_print,
+                .tk_return,
+                => return,
+                else => {},
+            }
+            self.advance();
+        }
     }
 
     fn statement(self: *Self) !void {
