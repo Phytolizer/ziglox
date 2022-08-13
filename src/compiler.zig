@@ -380,7 +380,14 @@ const Parser = struct {
         const thenJump = try self.compiler.?.emitJump(.op_jump_if_false);
         try self.statement();
 
+        const elseJump = try self.compiler.?.emitJump(.op_jump);
+
         self.compiler.?.patchJump(thenJump);
+
+        if (self.match(.tk_else)) {
+            try self.statement();
+        }
+        self.compiler.?.patchJump(elseJump);
     }
 
     fn block(self: *Self) ParseError!void {

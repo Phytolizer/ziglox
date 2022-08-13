@@ -246,6 +246,10 @@ pub const VM = struct {
                     try valueMod.printValue(stdout, self.pop());
                     try stdout.writeAll("\n");
                 },
+                .op_jump => {
+                    const offset = self.readShort();
+                    self.ip += offset;
+                },
                 .op_jump_if_false => {
                     const offset = self.readShort();
                     if (self.peek(0).isFalsey()) {
