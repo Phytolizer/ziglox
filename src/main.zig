@@ -119,3 +119,15 @@ test "if statement" {
     );
     std.debug.assert(result == .ok);
 }
+
+test "functions" {
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+
+    const result = try vm.interpret(
+        \\fun test() {
+        \\    print("Hello, world!");
+        \\}
+    );
+    std.debug.assert(result == .ok);
+}
