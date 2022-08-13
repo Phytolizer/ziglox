@@ -165,6 +165,14 @@ pub const VM = struct {
                 .op_pop => {
                     _ = self.pop();
                 },
+                .op_get_local => {
+                    const slot = self.readByte();
+                    self.push(self.stack[@as(usize, slot)]);
+                },
+                .op_set_local => {
+                    const slot = self.readByte();
+                    self.stack[@as(usize, slot)] = self.peek(0);
+                },
                 .op_get_global => {
                     const name = self.readString();
                     const value = if (self.globals.get(name)) |v|

@@ -93,3 +93,18 @@ test "can read file" {
     var text = try readFile(std.testing.allocator, "build.zig");
     defer std.testing.allocator.free(text);
 }
+
+test "scope works" {
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+
+    const result = try vm.interpret(
+        \\{
+        \\    var a = "outer";
+        \\    {
+        \\        var a = "inner";
+        \\    }
+        \\}
+    );
+    std.debug.assert(result == .ok);
+}

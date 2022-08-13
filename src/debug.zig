@@ -29,6 +29,8 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
         .op_true => return simpleInstruction(writer, "OP_TRUE", offset),
         .op_false => return simpleInstruction(writer, "OP_FALSE", offset),
         .op_pop => return simpleInstruction(writer, "OP_POP", offset),
+        .op_get_local => return byteInstruction(writer, "OP_GET_LOCAL", chunk, offset),
+        .op_set_local => return byteInstruction(writer, "OP_SET_LOCAL", chunk, offset),
         .op_get_global => return constantInstruction(writer, "OP_GET_GLOBAL", chunk, offset),
         .op_define_global => return constantInstruction(writer, "OP_DEFINE_GLOBAL", chunk, offset),
         .op_set_global => return constantInstruction(writer, "OP_SET_GLOBAL", chunk, offset),
@@ -55,5 +57,11 @@ fn constantInstruction(writer: Writer, comptime name: []const u8, chunk: *Chunk,
     try writer.print("{s:<16} {d:4} '", .{ name, constant });
     try valueMod.printValue(writer, chunk.constants.values.?[constant]);
     try writer.writeAll("'\n");
+    return offset + 2;
+}
+
+fn byteInstruction(writer: Writer, comptime name: []const u8, chunk: *Chunk, offset: usize) !usize {
+    const slot = chunk.code.?[offset + 1];
+    try writer.print("{s:<16} {d:4}", .{ name, slot });
     return offset + 2;
 }
