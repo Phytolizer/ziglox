@@ -45,6 +45,7 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
         .op_print => return simpleInstruction(writer, "OP_PRINT", offset),
         .op_jump => return jumpInstruction(writer, "OP_JUMP", 1, chunk, offset),
         .op_jump_if_false => return jumpInstruction(writer, "OP_JUMP_IF_FALSE", 1, chunk, offset),
+        .op_loop => return jumpInstruction(writer, "OP_LOOP", -1, chunk, offset),
         .op_return => return simpleInstruction(writer, "OP_RETURN", offset),
     }
 }

@@ -256,6 +256,10 @@ pub const VM = struct {
                         self.ip += offset;
                     }
                 },
+                .op_loop => {
+                    const offset = self.readShort();
+                    self.ip -= offset;
+                },
                 .op_return => {
                     return .ok;
                 },
