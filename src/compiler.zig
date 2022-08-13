@@ -361,6 +361,8 @@ const Parser = struct {
     fn statement(self: *Self) ParseError!void {
         if (self.match(.tk_print)) {
             try self.printStatement();
+        } else if (self.match(.tk_if)) {
+            try self.ifStatement();
         } else if (self.match(.tk_left_brace)) {
             self.beginScope();
             try self.block();
@@ -368,6 +370,17 @@ const Parser = struct {
         } else {
             try self.expressionStatement();
         }
+    }
+
+    fn ifStatement(self: *Self) ParseError!void {
+        self.consume(.tk_left_paren, "Expect '(' after 'if'.");
+        try self.expression();
+        self.consume(.tk_right_paren, "Expect ')' after condition.");
+
+        const thenJump = try self.compiler.?.emitJump(.op_jump_if_false);
+        try self.statement();
+
+        self.compiler.?.patchJump(thenJump);
     }
 
     fn block(self: *Self) ParseError!void {
@@ -572,6 +585,23 @@ const Compiler = struct {
             }
         }
         return null;
+    }
+
+    pub fn emitJump(self: *Self, instruction: OpCode) !usize {
+        try self.emitOp(instruction);
+        try self.emitBytes(0xff, 0xff);
+        return self.currentChunk().count - 2;
+    }
+
+    pub fn patchJump(self: *Self, offset: usize) void {
+        const jump = self.currentChunk().count - offset - 2;
+
+        if (jump > std.math.maxInt(u16)) {
+            self.parser.emitError("Too much code to jump over.");
+        }
+
+        self.currentChunk().code.?[offset] = @truncate(u8, jump >> 8);
+        self.currentChunk().code.?[offset + 1] = @truncate(u8, jump);
     }
 };
 

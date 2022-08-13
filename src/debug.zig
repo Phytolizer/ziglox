@@ -43,6 +43,7 @@ pub fn disassembleInstruction(writer: Writer, chunk: *Chunk, offset: usize) !usi
         .op_divide => return simpleInstruction(writer, "OP_DIVIDE", offset),
         .op_not => return simpleInstruction(writer, "OP_NOT", offset),
         .op_print => return simpleInstruction(writer, "OP_PRINT", offset),
+        .op_jump_if_false => return jumpInstruction(writer, "OP_JUMP_IF_FALSE", 1, chunk, offset),
         .op_return => return simpleInstruction(writer, "OP_RETURN", offset),
     }
 }
@@ -64,4 +65,15 @@ fn byteInstruction(writer: Writer, comptime name: []const u8, chunk: *Chunk, off
     const slot = chunk.code.?[offset + 1];
     try writer.print("{s:<16} {d:4}", .{ name, slot });
     return offset + 2;
+}
+
+fn jumpInstruction(writer: Writer, comptime name: []const u8, sign: isize, chunk: *Chunk, offset: usize) !usize {
+    var jump = @as(u16, chunk.code.?[offset + 1]) << 8;
+    jump |= @as(u16, chunk.code.?[offset + 2]);
+    try writer.print("{s:<16} {d:4} -> {d}\n", .{
+        name,
+        offset,
+        @intCast(isize, offset + 3) + sign * @as(isize, jump),
+    });
+    return offset + 3;
 }

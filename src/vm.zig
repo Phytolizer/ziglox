@@ -92,6 +92,13 @@ pub const VM = struct {
         return b;
     }
 
+    fn readShort(self: *Self) u16 {
+        const b1 = self.chunk.?.code.?[self.ip];
+        const b2 = self.chunk.?.code.?[self.ip + 1];
+        self.ip += 2;
+        return (@as(u16, b1) << 8) | @as(u16, b2);
+    }
+
     fn readConstant(self: *Self) Value {
         return self.chunk.?.constants.values.?[self.readByte()];
     }
@@ -238,6 +245,12 @@ pub const VM = struct {
                 .op_print => {
                     try valueMod.printValue(stdout, self.pop());
                     try stdout.writeAll("\n");
+                },
+                .op_jump_if_false => {
+                    const offset = self.readShort();
+                    if (self.peek(0).isFalsey()) {
+                        self.ip += offset;
+                    }
                 },
                 .op_return => {
                     return .ok;

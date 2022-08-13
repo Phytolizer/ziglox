@@ -108,3 +108,14 @@ test "scope works" {
     );
     std.debug.assert(result == .ok);
 }
+
+test "if statement" {
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+
+    const result = try vm.interpret(
+        \\if (true) print("condition was truthy");
+        \\if (false) print("the universe is falling apart");
+    );
+    std.debug.assert(result == .ok);
+}
