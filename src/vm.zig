@@ -15,6 +15,15 @@ const Obj = objectMod.Obj;
 const Table = @import("table.zig").Table;
 const u8Count = common.u8Count;
 
+// natives
+fn clockNative(args: []Value) Value {
+    _ = args;
+    return valueMod.numberVal(@intToFloat(f64, std.time.timestamp()));
+}
+comptime {
+    std.debug.assert(@TypeOf(clockNative) == Obj.NativeFnImpl);
+}
+
 pub const InterpretResult = enum {
     ok,
     compile_error,
@@ -44,12 +53,16 @@ pub const VM = struct {
 
     const Self = @This();
 
-    pub fn init(allocator: Allocator) Self {
-        return Self{
+    pub fn init(allocator: Allocator) !Self {
+        var result = Self{
             .allocator = allocator,
             .strings = Table.init(allocator),
             .globals = Table.init(allocator),
         };
+
+        try result.defineNative("clock", clockNative);
+
+        return result;
     }
 
     fn resetStack(self: *Self) void {
@@ -148,6 +161,21 @@ pub const VM = struct {
             }
         }
         self.resetStack();
+    }
+
+    fn defineNative(self: *Self, name: []const u8, f: Obj.NativeFnImpl) !void {
+        self.push(valueMod.objVal(
+            try objectMod.copyString(self, name),
+        ));
+        self.push(valueMod.objVal(
+            &(try objectMod.initNative(self, f)).obj,
+        ));
+        _ = try self.globals.set(
+            objectMod.asString(self.peek(1)) catch unreachable,
+            self.peek(0),
+        );
+        _ = self.pop();
+        _ = self.pop();
     }
 
     fn run(self: *Self) !InterpretResult {
@@ -306,6 +334,13 @@ pub const VM = struct {
             switch (obj.kind) {
                 .obj_function => {
                     return self.call(obj.asFunction() catch unreachable, argCount);
+                },
+                .obj_native => {
+                    const native = obj.asNative() catch unreachable;
+                    const result = native.function(self.stack[self.stackTop - @as(usize, argCount) ..]);
+                    self.stackTop -= @as(usize, argCount) + 1;
+                    self.push(result);
+                    return true;
                 },
                 else => {},
             }

@@ -25,7 +25,7 @@ fn repl() !void {
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
-    var vm = VM.init(gAllocator.backing_allocator);
+    var vm = try VM.init(gAllocator.backing_allocator);
     defer vm.deinit();
 
     while (true) {
@@ -43,7 +43,7 @@ fn repl() !void {
 fn run(path: []const u8) !void {
     const source = try readFile(gAllocator.backing_allocator, path);
     defer gAllocator.backing_allocator.free(source);
-    var vm = VM.init(gAllocator.backing_allocator);
+    var vm = try VM.init(gAllocator.backing_allocator);
     defer vm.deinit();
     const result = try vm.interpret(source);
 
@@ -82,7 +82,7 @@ fn readFile(allocator: Allocator, path: []const u8) ![]u8 {
 }
 
 test "VM doesn't leak" {
-    var vm = VM.init(std.testing.allocator);
+    var vm = try VM.init(std.testing.allocator);
     defer vm.deinit();
 
     const result = try vm.interpret("\"te\" + \"st\" == \"test\";");
@@ -95,7 +95,7 @@ test "can read file" {
 }
 
 test "scope works" {
-    var vm = VM.init(std.testing.allocator);
+    var vm = try VM.init(std.testing.allocator);
     defer vm.deinit();
 
     const result = try vm.interpret(
@@ -110,7 +110,7 @@ test "scope works" {
 }
 
 test "if statement" {
-    var vm = VM.init(std.testing.allocator);
+    var vm = try VM.init(std.testing.allocator);
     defer vm.deinit();
 
     const result = try vm.interpret(
@@ -120,10 +120,18 @@ test "if statement" {
     std.debug.assert(result == .ok);
 }
 
-test "functions" {
-    var vm = VM.init(std.testing.allocator);
+fn runTest(comptime path: []const u8) !void {
+    var vm = try VM.init(std.testing.allocator);
     defer vm.deinit();
 
-    const result = try vm.interpret(@embedFile("../function.lox"));
+    const result = try vm.interpret(@embedFile(path));
     std.debug.assert(result == .ok);
+}
+
+test "functions" {
+    try runTest("../function.lox");
+}
+
+test "natives" {
+    try runTest("../natives.lox");
 }

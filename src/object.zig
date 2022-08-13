@@ -41,9 +41,19 @@ pub fn asFunction(v: Value) !*Obj.Function {
     return try o.asFunction();
 }
 
+pub fn isNative(v: Value) bool {
+    return isObjKind(v, .obj_native);
+}
+
+pub fn asNative(v: Value) !*Obj.Native {
+    const o = try v.asObj();
+    return try o.asNative();
+}
+
 pub const ObjKind = enum {
     obj_string,
     obj_function,
+    obj_native,
 };
 
 pub const Obj = struct {
@@ -63,6 +73,9 @@ pub const Obj = struct {
                 const function = self.asFunction() catch unreachable;
                 function.chunk.deinit();
                 allocator.destroy(function);
+            },
+            .obj_native => {
+                allocator.destroy(self.asNative() catch unreachable);
             },
         }
     }
@@ -90,6 +103,18 @@ pub const Obj = struct {
         arity: usize,
         chunk: Chunk,
         name: ?*String,
+    };
+
+    pub fn asNative(self: *Self) !*NativeFn {
+        switch (self.kind) {
+            .obj_native => return @fieldParentPtr(NativeFn, "obj", self),
+            else => return error.NotANative,
+        }
+    }
+    pub const NativeFnImpl = fn (args: []Value) Value;
+    pub const NativeFn = struct {
+        obj: Obj,
+        function: NativeFnImpl,
     };
 };
 
@@ -138,6 +163,9 @@ pub fn printObj(writer: Writer, value: Value) !void {
         .obj_function => {
             try printFunction(writer, obj.asFunction() catch unreachable);
         },
+        .obj_native => {
+            try writer.print("<native fn>", .{});
+        },
     }
 }
 
@@ -165,4 +193,10 @@ pub fn initFunction(vm: *VM) !*Obj.Function {
     function.name = null;
     function.chunk = Chunk.init(vm.allocator);
     return function;
+}
+
+pub fn initNative(vm: *VM, function: Obj.NativeFnImpl) !*Obj.NativeFn {
+    const native = try allocateObj(Obj.NativeFn, vm, .obj_native);
+    native.function = function;
+    return native;
 }
