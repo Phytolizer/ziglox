@@ -30,6 +30,7 @@ pub const VM = struct {
     allocator: Allocator,
     objects: ?*Obj = null,
     strings: Table,
+    globals: Table,
 
     const Self = @This();
 
@@ -37,6 +38,7 @@ pub const VM = struct {
         return Self{
             .allocator = allocator,
             .strings = Table.init(allocator),
+            .globals = Table.init(allocator),
         };
     }
 
@@ -57,6 +59,7 @@ pub const VM = struct {
     pub fn deinit(self: *Self) void {
         self.freeObjects();
         self.strings.deinit();
+        self.globals.deinit();
     }
 
     fn freeObjects(self: *Self) void {
@@ -91,6 +94,12 @@ pub const VM = struct {
 
     fn readConstant(self: *Self) Value {
         return self.chunk.?.constants.values.?[self.readByte()];
+    }
+
+    fn readString(self: *Self) *Obj.String {
+        return objectMod.asString(self.readConstant()) catch
+        // cannot happen because the compiler will never generate a non-string constant
+            unreachable;
     }
 
     fn binaryOp(self: *Self, comptime T: type, comptime valueType: fn (T) Value, comptime op: fn (comptime T: type, Value, Value) Value) !void {
@@ -154,6 +163,11 @@ pub const VM = struct {
                     self.push(valueMod.boolVal(false));
                 },
                 .op_pop => {
+                    _ = self.pop();
+                },
+                .op_define_global => {
+                    const name = self.readString();
+                    _ = try self.globals.set(name, self.peek(0));
                     _ = self.pop();
                 },
                 .op_equal => {

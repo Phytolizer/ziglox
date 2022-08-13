@@ -257,11 +257,33 @@ const Parser = struct {
     }
 
     pub fn declaration(self: *Self) !void {
-        try self.statement();
+        if (self.match(.tk_var)) {
+            try self.varDeclaration();
+        } else {
+            try self.statement();
+        }
 
         if (self.panicMode) {
             self.synchronize();
         }
+    }
+
+    fn parseVariable(self: *Self, comptime errorMessage: []const u8) !u8 {
+        self.consume(.tk_identifier, errorMessage);
+        return try self.compiler.?.identifierConstant(&self.previous);
+    }
+
+    fn varDeclaration(self: *Self) !void {
+        const global = try self.parseVariable("Expect variable name.");
+
+        if (self.match(.tk_equal)) {
+            try self.expression();
+        } else {
+            try self.compiler.?.emitOp(.op_nil);
+        }
+        self.consume(.tk_semicolon, "Expect ';' after variable declaration.");
+
+        try self.compiler.?.defineVariable(global);
     }
 
     fn synchronize(self: *Self) void {
@@ -352,6 +374,12 @@ const Compiler = struct {
         try self.emitOp(.op_return);
     }
 
+    pub fn identifierConstant(self: *Self, name: *Token) !u8 {
+        return try self.makeConstant(valueMod.objVal(
+            try objectMod.copyString(self.vm, name.text),
+        ));
+    }
+
     pub fn end(self: *Self) !void {
         try self.emitReturn();
         if (common.debugPrintCode) {
@@ -387,6 +415,11 @@ const Compiler = struct {
         }
 
         return @intCast(u8, constant);
+    }
+
+    pub fn defineVariable(self: *Self, global: u8) !void {
+        try self.emitOp(.op_define_global);
+        try self.emitByte(global);
     }
 };
 
