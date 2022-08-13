@@ -465,10 +465,22 @@ const Parser = struct {
             self.beginScope();
             try self.block();
             try self.endScope();
+        } else if (self.match(.tk_return)) {
+            try self.returnStatement();
         } else if (self.match(.tk_while)) {
             try self.whileStatement();
         } else {
             try self.expressionStatement();
+        }
+    }
+
+    fn returnStatement(self: *Self) ParseError!void {
+        if (self.match(.tk_semicolon)) {
+            try self.compiler.?.emitReturn();
+        } else {
+            try self.expression();
+            self.consume(.tk_semicolon, "Expect ';' after return value.");
+            try self.compiler.?.emitOp(.op_return);
         }
     }
 

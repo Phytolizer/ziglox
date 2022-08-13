@@ -1,8 +1,9 @@
-fun a() { b(); }
-fun b() { c(); }
+fun a() { return b(); }
+fun b() { return c(); }
 fun c() {
     print "Hello, World!";
+    return "epic return value";
 }
 
 a();
-b();
+print b();
