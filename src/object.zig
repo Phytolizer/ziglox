@@ -5,6 +5,7 @@ const Allocator = std.mem.Allocator;
 const Writer = std.fs.File.Writer;
 const VM = @import("vm.zig").VM;
 const memoryMod = @import("memory.zig");
+const Chunk = @import("chunk.zig").Chunk;
 
 pub fn objKind(v: Value) !ObjKind {
     const o = try v.asObj();
@@ -23,7 +24,7 @@ pub fn isString(v: Value) bool {
 
 pub fn asString(v: Value) !*Obj.String {
     const o = try v.asObj();
-    return o.asString();
+    return try o.asString();
 }
 
 pub fn asCString(v: Value) ![]u8 {
@@ -31,8 +32,18 @@ pub fn asCString(v: Value) ![]u8 {
     return s.data;
 }
 
+pub fn isFunction(v: Value) bool {
+    return isObjKind(v, .obj_function);
+}
+
+pub fn asFunction(v: Value) !*Obj.Function {
+    const o = try v.asObj();
+    return try o.asFunction();
+}
+
 pub const ObjKind = enum {
     obj_string,
+    obj_function,
 };
 
 pub const Obj = struct {
@@ -44,23 +55,41 @@ pub const Obj = struct {
     pub fn deinit(self: *Self, allocator: Allocator) void {
         switch (self.kind) {
             .obj_string => {
-                const s = self.asString();
+                const s = self.asString() catch unreachable;
                 memoryMod.freeArray(u8, allocator, s.data);
                 allocator.destroy(s);
+            },
+            .obj_function => {
+                const function = self.asFunction() catch unreachable;
+                function.chunk.deinit();
+                allocator.destroy(function);
             },
         }
     }
 
-    pub fn asString(self: *Self) *String {
+    pub fn asString(self: *Self) !*String {
         switch (self.kind) {
             .obj_string => return @fieldParentPtr(String, "obj", self),
-            // else => return error.NotAString,
+            else => return error.NotAString,
         }
     }
     pub const String = struct {
         obj: Obj,
         data: []u8,
         hash: u32,
+    };
+
+    pub fn asFunction(self: *Self) !*Function {
+        switch (self.kind) {
+            .obj_function => return @fieldParentPtr(Function, "obj", self),
+            else => return error.NotAFunction,
+        }
+    }
+    pub const Function = struct {
+        obj: Obj,
+        arity: usize,
+        chunk: Chunk,
+        name: ?*String,
     };
 };
 
@@ -106,6 +135,17 @@ pub fn printObj(writer: Writer, value: Value) !void {
         .obj_string => {
             try writer.print("{s}", .{asCString(value) catch unreachable});
         },
+        .obj_function => {
+            try printFunction(writer, obj.asFunction() catch unreachable);
+        },
+    }
+}
+
+fn printFunction(writer: Writer, function: *Obj.Function) !void {
+    if (function.name) |name| {
+        try writer.print("<fn {s}>", .{name.data});
+    } else {
+        try writer.print("<script>", .{});
     }
 }
 
@@ -117,4 +157,12 @@ pub fn takeString(vm: *VM, chars: []u8) !*Obj.String {
     }
     const result = try allocateString(vm, chars, hash);
     return result;
+}
+
+pub fn initFunction(vm: *VM) !*Obj.Function {
+    const function = try allocateObj(Obj.Function, vm, .obj_function);
+    function.arity = 0;
+    function.name = null;
+    function.chunk = Chunk.init(vm.allocator);
+    return function;
 }

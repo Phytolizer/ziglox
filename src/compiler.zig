@@ -12,7 +12,9 @@ const Value = valueMod.Value;
 const common = @import("common.zig");
 const debug = @import("debug.zig");
 const objectMod = @import("object.zig");
+const Obj = objectMod.Obj;
 const Allocator = std.mem.Allocator;
+const u8Count = common.u8Count;
 
 const Precedence = enum(u8) {
     prec_none,
@@ -533,33 +535,44 @@ const Parser = struct {
     }
 };
 
-const u8Count = std.math.maxInt(u8) + 1;
-
 const Local = struct {
     name: Token,
     depth: ?usize,
 };
 
+const FunctionKind = enum {
+    k_function,
+    k_script,
+};
+
 const Compiler = struct {
-    compilingChunk: *Chunk,
     parser: *Parser,
     vm: *VM,
     locals: [u8Count]Local = undefined,
     localCount: usize = 0,
     scopeDepth: usize = 0,
+    function: *Obj.Function,
+    kind: FunctionKind,
 
     const Self = @This();
 
-    pub fn init(compilingChunk: *Chunk, parser: *Parser, vm: *VM) Self {
-        return Self{
-            .compilingChunk = compilingChunk,
+    pub fn init(parser: *Parser, vm: *VM, kind: FunctionKind) !Self {
+        var result = Self{
             .parser = parser,
             .vm = vm,
+            .function = try objectMod.initFunction(vm),
+            .kind = kind,
         };
+
+        const local = &result.locals[result.localCount];
+        result.localCount += 1;
+        local.depth = 0;
+        local.name.text = "";
+        return result;
     }
 
     pub fn emitByte(self: *Self, byte: u8) !void {
-        try self.compilingChunk.write(byte, self.parser.previous.line);
+        try self.currentChunk().write(byte, self.parser.previous.line);
     }
 
     pub fn emitOp(self: *Self, op: OpCode) !void {
@@ -567,7 +580,7 @@ const Compiler = struct {
     }
 
     pub fn currentChunk(self: *Self) *Chunk {
-        return self.compilingChunk;
+        return &self.function.chunk;
     }
 
     fn emitReturn(self: *Self) !void {
@@ -580,15 +593,21 @@ const Compiler = struct {
         ));
     }
 
-    pub fn end(self: *Self) !void {
+    pub fn end(self: *Self) !*Obj.Function {
         try self.emitReturn();
+        const function = self.function;
         if (common.debugPrintCode) {
             try debug.disassembleChunk(
                 std.io.getStdOut().writer(),
                 self.currentChunk(),
-                "code",
+                if (function.name) |name|
+                    name.data
+                else
+                    "<script>",
             );
         }
+
+        return function;
     }
 
     pub fn emitBytes(self: *Self, b1: u8, b2: u8) !void {
@@ -715,15 +734,18 @@ const Compiler = struct {
     }
 };
 
-pub fn compile(source: []const u8, chunk: *Chunk, vm: *VM) !bool {
+pub fn compile(source: []const u8, vm: *VM) !?*Obj.Function {
     var scanner = Scanner.init(source);
-    var parser = Parser.init(&scanner, chunk.allocator);
-    var compiler = Compiler.init(chunk, &parser, vm);
+    var parser = Parser.init(&scanner, vm.allocator);
+    var compiler = try Compiler.init(&parser, vm, .k_script);
     parser.compiler = &compiler;
     parser.advance();
     while (!parser.match(.tk_eof)) {
         try parser.declaration();
     }
-    try compiler.end();
-    return !parser.hadError;
+    const function = try compiler.end();
+    return if (parser.hadError)
+        null
+    else
+        function;
 }
