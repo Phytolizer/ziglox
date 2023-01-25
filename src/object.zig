@@ -111,7 +111,7 @@ pub const Obj = struct {
             else => return error.NotANative,
         }
     }
-    pub const NativeFnImpl = fn (args: []Value) Value;
+    pub const NativeFnImpl = *const fn (args: []Value) Value;
     pub const NativeFn = struct {
         obj: Obj,
         function: NativeFnImpl,

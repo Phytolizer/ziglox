@@ -21,7 +21,7 @@ fn clockNative(args: []Value) Value {
     return valueMod.numberVal(@intToFloat(f64, std.time.timestamp()));
 }
 comptime {
-    std.debug.assert(@TypeOf(clockNative) == Obj.NativeFnImpl);
+    std.debug.assert(@TypeOf(&clockNative) == Obj.NativeFnImpl);
 }
 
 pub const InterpretResult = enum {
@@ -130,7 +130,12 @@ pub const VM = struct {
             unreachable;
     }
 
-    fn binaryOp(self: *Self, comptime T: type, comptime valueType: fn (T) Value, comptime op: fn (comptime T: type, Value, Value) Value) !void {
+    fn binaryOp(
+        self: *Self,
+        comptime T: type,
+        comptime valueType: fn (T) Value,
+        comptime op: fn (comptime type, anytype, anytype) T,
+    ) !void {
         if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
             self.runtimeError("Operands must be numbers.", .{});
             return error.RuntimeError;
@@ -256,12 +261,26 @@ pub const VM = struct {
                     self.push(valueMod.boolVal(a.equals(b)));
                 },
                 .op_greater => {
-                    self.binaryOp(bool, valueMod.boolVal, math.greater) catch
-                        return .runtime_error;
+                    self.binaryOp(
+                        bool,
+                        valueMod.boolVal,
+                        struct {
+                            fn greater(comptime T: type, a: T, b: T) bool {
+                                return a > b;
+                            }
+                        }.greater,
+                    ) catch return .runtime_error;
                 },
                 .op_less => {
-                    self.binaryOp(bool, valueMod.boolVal, math.less) catch
-                        return .runtime_error;
+                    self.binaryOp(
+                        bool,
+                        valueMod.boolVal,
+                        struct {
+                            fn less(comptime T: type, a: T, b: T) bool {
+                                return a < b;
+                            }
+                        }.less,
+                    ) catch return .runtime_error;
                 },
                 .op_add => {
                     if (objectMod.isString(self.peek(0)) and objectMod.isString(self.peek(1))) {

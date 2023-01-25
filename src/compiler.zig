@@ -32,7 +32,7 @@ const Precedence = enum(u8) {
 
 const ParseError = std.mem.Allocator.Error || std.fmt.ParseFloatError || std.fs.File.WriteError;
 
-const ParseFn = ?fn (parser: *Parser, canAssign: bool) ParseError!void;
+const ParseFn = ?*const fn (parser: *Parser, canAssign: bool) ParseError!void;
 
 const ParseRule = struct {
     prefix: ParseFn = null,

@@ -120,18 +120,12 @@ test "if statement" {
     std.debug.assert(result == .ok);
 }
 
-fn runTest(comptime path: []const u8) !void {
-    var vm = try VM.init(std.testing.allocator);
+pub fn runTest(a: std.mem.Allocator, path: []const u8) !bool {
+    var vm = try VM.init(a);
     defer vm.deinit();
 
-    const result = try vm.interpret(@embedFile(path));
-    std.debug.assert(result == .ok);
-}
-
-test "functions" {
-    try runTest("../function.lox");
-}
-
-test "natives" {
-    try runTest("../natives.lox");
+    const contents = try std.fs.cwd().readFileAlloc(a, path, std.math.maxInt(usize));
+    defer a.free(contents);
+    const result = try vm.interpret(contents);
+    return result == .ok;
 }

@@ -11,7 +11,7 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("pl0", "src/main.zig");
+    const exe = b.addExecutable("lox", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
@@ -25,10 +25,21 @@ pub fn build(b: *std.build.Builder) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const exe_tests = b.addTest("src/main.zig");
-    exe_tests.setTarget(target);
-    exe_tests.setBuildMode(mode);
+    const tests = b.addExecutable("tests", "src/test.zig");
+    tests.setTarget(target);
+    tests.setBuildMode(mode);
+    tests.addPackage(.{
+        .name = "lox",
+        .source = .{ .path = "src/main.zig" },
+    });
+    tests.install();
+
+    const tests_run_cmd = tests.run();
+    tests_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        tests_run_cmd.addArgs(args);
+    }
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&exe_tests.step);
+    test_step.dependOn(&tests_run_cmd.step);
 }
