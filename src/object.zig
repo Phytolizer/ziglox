@@ -91,6 +91,7 @@ pub const String = struct {
             .allocator = a,
             .deinit_func = deinit,
         };
+        // BUG: somehow this value is deinitialized before we're done with it?
         result.value = value;
         return &result.base;
     }
