@@ -6,16 +6,36 @@ const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const debug = @import("debug.zig");
 
+const STACK_MAX = 256;
+
 const VM = struct {
     chunk: ?*Chunk = null,
     ip: usize = 0,
+    stack: [STACK_MAX]Value = undefined,
+    stack_top: usize = 0,
 };
 
 var vm = VM{};
 
-pub fn init() void {}
+pub fn init() void {
+    resetStack();
+}
+
+fn resetStack() void {
+    vm.stack_top = 0;
+}
 
 pub fn deinit() void {}
+
+fn push(value: Value) void {
+    vm.stack[vm.stack_top] = value;
+    vm.stack_top += 1;
+}
+
+fn pop() Value {
+    vm.stack_top -= 1;
+    return vm.stack[vm.stack_top];
+}
 
 pub fn interpret(chunk: *Chunk) !void {
     vm.chunk = chunk;
@@ -49,21 +69,28 @@ fn run() !void {
 
     while (true) {
         if (debug.TRACE_EXECUTION) {
+            try bww.writeAll("          ");
+            var slot: usize = 0;
+            while (slot < vm.stack_top) : (slot += 1) {
+                try bww.writeAll("[ ");
+                try value_mod.printValue(bww, vm.stack[slot]);
+                try bww.writeAll(" ]");
+            }
+            try bww.writeByte('\n');
             _ = try debug.disassembleInstruction(vm.chunk.?, vm.ip, bww);
         }
         const instruction = Reader.readByte();
         switch (@intToEnum(OpCode, instruction)) {
             .constant => {
                 const constant = Reader.readConstant();
-                try value_mod.printValue(bww, constant);
-                try bww.writeByte('\n');
+                push(constant);
             },
             .constant_long => {
                 const constant = Reader.readConstantLong();
-                try value_mod.printValue(bww, constant);
-                try bww.writeByte('\n');
+                push(constant);
             },
             .@"return" => {
+                try value_mod.printValue(bww, pop());
                 break;
             },
             _ => {
