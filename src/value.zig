@@ -4,7 +4,7 @@ const memory = @import("memory.zig");
 pub const Value = f64;
 
 pub fn printValue(writer: anytype, v: Value) !void {
-    return try writer.print("{d}", .{v});
+    try writer.print("{d}", .{v});
 }
 
 pub const ValueArray = struct {

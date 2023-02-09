@@ -1,8 +1,9 @@
 const std = @import("std");
 const g = @import("global.zig");
-const chunk = @import("chunk.zig");
-const Chunk = chunk.Chunk;
+const chunk_mod = @import("chunk.zig");
+const Chunk = chunk_mod.Chunk;
 const debug = @import("debug.zig");
+const vm = @import("vm.zig");
 
 pub fn main() void {
     // Hack to allow `defer` to work properly.
@@ -15,14 +16,14 @@ fn run() !void {
     defer _ = gpa.detectLeaks();
     g.allocator = gpa.allocator();
 
-    var c = Chunk.init();
-    defer c.deinit();
-    try c.writeConstant(1.2, 123);
-    var i: usize = 0;
-    while (i < 257) : (i += 1) {
-        try c.writeConstant(1.2, 123);
-    }
-    try c.writeOp(.@"return", 123);
+    vm.init();
+    defer vm.deinit();
 
-    try debug.disassembleChunk(&c, "test chunk");
+    var chunk = Chunk.init();
+    defer chunk.deinit();
+    try chunk.writeConstant(1.2, 123);
+    try chunk.writeOp(.@"return", 123);
+
+    try debug.disassembleChunk(&chunk, "test chunk");
+    try vm.interpret(&chunk);
 }
