@@ -17,9 +17,11 @@ fn run() !void {
 
     var c = Chunk.init();
     defer c.deinit();
-    const constant = try c.addConstant(1.2);
-    try c.writeOp(.constant, 123);
-    try c.write(@intCast(u8, constant), 123);
+    try c.writeConstant(1.2, 123);
+    var i: usize = 0;
+    while (i < 257) : (i += 1) {
+        try c.writeConstant(1.2, 123);
+    }
     try c.writeOp(.@"return", 123);
 
     try debug.disassembleChunk(&c, "test chunk");

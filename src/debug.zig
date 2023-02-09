@@ -27,6 +27,7 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
     const instruction = c.code[offset];
     switch (@intToEnum(chunk.OpCode, instruction)) {
         .constant => return try constantInstruction("OP_CONSTANT", c, offset, writer),
+        .constant_long => return try constantLongInstruction("OP_CONSTANT_LONG", c, offset, writer),
         .@"return" => return try simpleInstruction("OP_RETURN", offset, writer),
         _ => {
             try writer.print("Unknown opcode {d}\n", .{instruction});
@@ -46,4 +47,15 @@ fn constantInstruction(comptime name: []const u8, c: *const Chunk, offset: usize
     try value.printValue(writer, c.constants.values[constant]);
     try writer.writeAll("'\n");
     return offset + 2;
+}
+
+fn constantLongInstruction(comptime name: []const u8, c: *const Chunk, offset: usize, writer: anytype) !usize {
+    const hi = c.code[offset + 1];
+    const md = c.code[offset + 2];
+    const lo = c.code[offset + 3];
+    const constant: u24 = (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
+    try writer.print("{s:<16} {d:>4} '", .{ name, constant });
+    try value.printValue(writer, c.constants.values[constant]);
+    try writer.writeAll("'\n");
+    return offset + 4;
 }

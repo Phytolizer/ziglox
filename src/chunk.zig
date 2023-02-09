@@ -5,6 +5,7 @@ const value = @import("value.zig");
 
 pub const OpCode = enum(u8) {
     constant,
+    constant_long,
     @"return",
     _,
 };
@@ -92,6 +93,20 @@ pub const Chunk = struct {
 
     pub fn writeOp(self: *@This(), op: OpCode, line: usize) !void {
         return try self.write(@enumToInt(op), line);
+    }
+
+    pub fn writeConstant(self: *@This(), v: value.Value, line: usize) !void {
+        const constant = try self.addConstant(v);
+        if (constant <= std.math.maxInt(u8)) {
+            try self.writeOp(OpCode.constant, line);
+            try self.write(@intCast(u8, constant), line);
+        } else if (constant <= std.math.maxInt(u24)) {
+            // serialize 24-bit big-endian value
+            try self.writeOp(OpCode.constant_long, line);
+            try self.write(@truncate(u8, constant >> 16), line);
+            try self.write(@truncate(u8, constant >> 8), line);
+            try self.write(@truncate(u8, constant), line);
+        } else unreachable;
     }
 
     pub fn getLine(self: *const @This(), offset: usize) usize {
