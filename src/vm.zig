@@ -5,6 +5,7 @@ const OpCode = chunk_mod.OpCode;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const debug = @import("debug.zig");
+const compiler = @import("compiler.zig");
 
 const STACK_MAX = 256;
 
@@ -37,10 +38,13 @@ fn pop() Value {
     return vm.stack[vm.stack_top];
 }
 
-pub fn interpret(chunk: *Chunk) !void {
-    vm.chunk = chunk;
-    vm.ip = 0;
-    try run();
+const InterpretError = error{
+    Compile,
+    Runtime,
+} || std.fs.File.WriteError;
+
+pub fn interpret(source: []const u8) InterpretError!void {
+    try compiler.compile(source);
 }
 
 fn run() !void {
