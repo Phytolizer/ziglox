@@ -4,6 +4,7 @@ const Chunk = chunk_mod.Chunk;
 const OpCode = chunk_mod.OpCode;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const debug = @import("debug.zig");
 
 const VM = struct {
     chunk: ?*Chunk = null,
@@ -47,6 +48,9 @@ fn run() !void {
     const bww = bw.writer();
 
     while (true) {
+        if (debug.TRACE_EXECUTION) {
+            _ = try debug.disassembleInstruction(vm.chunk.?, vm.ip, bww);
+        }
         const instruction = Reader.readByte();
         switch (@intToEnum(OpCode, instruction)) {
             .constant => {
