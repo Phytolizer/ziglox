@@ -63,6 +63,13 @@ fn run() !void {
             return vm.chunk.?.constants.values[constant];
         }
     };
+    const binaryOp = struct {
+        fn f(comptime op: fn (Value, Value) Value) void {
+            const b = pop();
+            const a = pop();
+            push(op(a, b));
+        }
+    }.f;
 
     var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
     const bww = bw.writer();
@@ -88,6 +95,29 @@ fn run() !void {
             .constant_long => {
                 const constant = Reader.readConstantLong();
                 push(constant);
+            },
+            .add => binaryOp(struct {
+                fn op(a: Value, b: Value) Value {
+                    return a + b;
+                }
+            }.op),
+            .subtract => binaryOp(struct {
+                fn op(a: Value, b: Value) Value {
+                    return a - b;
+                }
+            }.op),
+            .multiply => binaryOp(struct {
+                fn op(a: Value, b: Value) Value {
+                    return a * b;
+                }
+            }.op),
+            .divide => binaryOp(struct {
+                fn op(a: Value, b: Value) Value {
+                    return a / b;
+                }
+            }.op),
+            .negate => {
+                push(-pop());
             },
             .@"return" => {
                 try value_mod.printValue(bww, pop());

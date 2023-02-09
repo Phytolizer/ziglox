@@ -30,6 +30,11 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
     switch (@intToEnum(chunk.OpCode, instruction)) {
         .constant => return try constantInstruction("OP_CONSTANT", c, offset, writer),
         .constant_long => return try constantLongInstruction("OP_CONSTANT_LONG", c, offset, writer),
+        .add => return try simpleInstruction("OP_ADD", offset, writer),
+        .subtract => return try simpleInstruction("OP_SUBTRACT", offset, writer),
+        .multiply => return try simpleInstruction("OP_MULTIPLY", offset, writer),
+        .divide => return try simpleInstruction("OP_DIVIDE", offset, writer),
+        .negate => return try simpleInstruction("OP_NEGATE", offset, writer),
         .@"return" => return try simpleInstruction("OP_RETURN", offset, writer),
         _ => {
             try writer.print("Unknown opcode {d}\n", .{instruction});

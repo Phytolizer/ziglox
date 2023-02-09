@@ -22,6 +22,11 @@ fn run() !void {
     var chunk = Chunk.init();
     defer chunk.deinit();
     try chunk.writeConstant(1.2, 123);
+    try chunk.writeConstant(3.4, 123);
+    try chunk.writeOp(.add, 123);
+    try chunk.writeConstant(5.6, 123);
+    try chunk.writeOp(.divide, 123);
+    try chunk.writeOp(.negate, 123);
     try chunk.writeOp(.@"return", 123);
 
     try debug.disassembleChunk(&chunk, "test chunk");
