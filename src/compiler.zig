@@ -5,6 +5,7 @@ const Chunk = chunk_mod.Chunk;
 const Token = scanner.Token;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const debug = @import("debug.zig");
 
 pub fn compile(source: []const u8, chunk: *Chunk) !void {
     scanner.init(source);
@@ -100,6 +101,9 @@ fn emitConstant(value: Value) !void {
 
 fn endCompiler() !void {
     try emitReturn();
+    if (debug.PRINT_CODE and !parser.had_error) {
+        try debug.disassembleChunk(currentChunk(), "code");
+    }
 }
 
 fn expression() ParseError!void {
