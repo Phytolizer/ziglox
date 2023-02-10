@@ -69,6 +69,16 @@ pub const Token = struct {
     };
 };
 
+fn isDigit(c: u8) bool {
+    return '0' <= c and c <= '9';
+}
+
+fn isAlpha(c: u8) bool {
+    return ('a' <= c and c <= 'z') or
+        ('A' <= c and c <= 'Z') or
+        c == '_';
+}
+
 pub fn scanToken() Token {
     skipWhitespace();
     scanner.start = scanner.current;
@@ -78,6 +88,8 @@ pub fn scanToken() Token {
     }
 
     const c = advance();
+    if (isDigit(c)) return number();
+    if (isAlpha(c)) return identifier();
     switch (c) {
         '(' => return makeToken(.left_paren),
         ')' => return makeToken(.right_paren),
@@ -185,4 +197,66 @@ fn string() Token {
 
     _ = advance();
     return makeToken(.string);
+}
+
+fn number() Token {
+    while (isDigit(peek())) _ = advance();
+
+    if (peek() == '.' and isDigit(peekNext())) {
+        _ = advance();
+        while (isDigit(peek())) _ = advance();
+    }
+
+    return makeToken(.number);
+}
+
+fn identifier() Token {
+    while (isAlpha(peek()) or isDigit(peek())) _ = advance();
+    return makeToken(identifierKind());
+}
+
+fn identifierKind() Token.Kind {
+    switch (scanner.source[scanner.start]) {
+        'a' => return checkKeyword(1, "nd", .@"and"),
+        'c' => return checkKeyword(1, "lass", .class),
+        'e' => return checkKeyword(1, "lse", .@"else"),
+        'f' => {
+            if (scanner.current - scanner.start > 1) {
+                switch (scanner.source[scanner.start + 1]) {
+                    'a' => return checkKeyword(2, "lse", .false),
+                    'o' => return checkKeyword(2, "r", .@"for"),
+                    'u' => return checkKeyword(2, "n", .fun),
+                    else => {},
+                }
+            }
+        },
+        'i' => return checkKeyword(1, "f", .@"if"),
+        'n' => return checkKeyword(1, "il", .nil),
+        'o' => return checkKeyword(1, "r", .@"or"),
+        'p' => return checkKeyword(1, "rint", .print),
+        'r' => return checkKeyword(1, "eturn", .@"return"),
+        's' => return checkKeyword(1, "uper", .super),
+        't' => {
+            if (scanner.current - scanner.start > 1) {
+                switch (scanner.source[scanner.start + 1]) {
+                    'h' => return checkKeyword(2, "is", .this),
+                    'r' => return checkKeyword(2, "ue", .true),
+                    else => {},
+                }
+            }
+        },
+        'v' => return checkKeyword(1, "ar", .@"var"),
+        'w' => return checkKeyword(1, "hile", .@"while"),
+        else => {},
+    }
+    return .identifier;
+}
+
+fn checkKeyword(start: usize, rest: []const u8, kind: Token.Kind) Token.Kind {
+    if (scanner.current - scanner.start == start + rest.len and
+        std.mem.eql(u8, scanner.source[scanner.start + start .. scanner.current], rest))
+    {
+        return kind;
+    }
+    return .identifier;
 }
