@@ -42,6 +42,10 @@ fn peek(distance: usize) Value {
     return vm.stack[vm.stack_top - 1 - distance];
 }
 
+fn isFalsey(v: Value) bool {
+    return v.isNil() or (v.isBoolean() and !v.boolean);
+}
+
 fn runtimeError(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(fmt, args);
     const instruction = vm.ip - 1;
@@ -147,6 +151,7 @@ fn run() !void {
                     return a / b;
                 }
             }.op),
+            .not => push(.{ .boolean = isFalsey(pop()) }),
             .negate => {
                 if (!peek(0).isNumber()) {
                     runtimeError("Operand must be a number", .{});

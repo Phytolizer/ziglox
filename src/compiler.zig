@@ -127,6 +127,7 @@ fn unary() ParseError!void {
     try parsePrecedence(.unary);
 
     switch (operator_kind) {
+        .bang => try emitOp(.not),
         .minus => try emitOp(.negate),
         else => unreachable,
     }
@@ -183,7 +184,7 @@ const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .semicolon = .{},
     .slash = .{ .infix = binary, .precedence = .factor },
     .star = .{ .infix = binary, .precedence = .factor },
-    .bang = .{},
+    .bang = .{ .prefix = unary },
     .bang_equal = .{},
     .equal = .{},
     .equal_equal = .{},
