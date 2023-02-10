@@ -41,10 +41,19 @@ fn pop() Value {
 const InterpretError = error{
     Compile,
     Runtime,
-} || std.fs.File.WriteError;
+} || std.fs.File.WriteError ||
+    std.mem.Allocator.Error;
 
 pub fn interpret(source: []const u8) InterpretError!void {
-    try compiler.compile(source);
+    var chunk = Chunk.init();
+    defer chunk.deinit();
+
+    try compiler.compile(source, &chunk);
+
+    vm.chunk = &chunk;
+    vm.ip = 0;
+
+    try run();
 }
 
 fn run() !void {
@@ -125,6 +134,7 @@ fn run() !void {
             },
             .@"return" => {
                 try value_mod.printValue(bww, pop());
+                try bww.writeByte('\n');
                 break;
             },
             _ => {
