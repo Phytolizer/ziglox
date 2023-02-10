@@ -6,6 +6,9 @@ const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const debug = @import("debug.zig");
 const compiler = @import("compiler.zig");
+const g = @import("global.zig");
+const obj_mod = @import("obj.zig");
+const Obj = obj_mod.Obj;
 
 const STACK_MAX = 256;
 
@@ -14,9 +17,10 @@ const VM = struct {
     ip: usize = 0,
     stack: [STACK_MAX]Value = undefined,
     stack_top: usize = 0,
+    objects: ?*Obj = null,
 };
 
-var vm = VM{};
+pub var vm = VM{};
 
 pub fn init() void {
     resetStack();
@@ -26,7 +30,18 @@ fn resetStack() void {
     vm.stack_top = 0;
 }
 
-pub fn deinit() void {}
+pub fn deinit() void {
+    freeObjects();
+}
+
+fn freeObjects() void {
+    var object = vm.objects;
+    while (object) |obj| {
+        const next = obj.next;
+        obj.deinit();
+        object = next;
+    }
+}
 
 fn push(value: Value) void {
     vm.stack[vm.stack_top] = value;
@@ -146,11 +161,18 @@ fn run() !void {
                     return a < b;
                 }
             }.op),
-            .add => try binaryOp(.number, f64, struct {
-                fn op(a: f64, b: f64) f64 {
-                    return a + b;
+            .add => {
+                if (peek(0).isString() and peek(1).isString()) {
+                    try concatenate();
+                } else if (peek(0).isNumber() and peek(1).isNumber()) {
+                    const b = pop().number;
+                    const a = pop().number;
+                    push(.{ .number = a + b });
+                } else {
+                    runtimeError("Operands must be two numbers or two strings.", .{});
+                    return error.Runtime;
                 }
-            }.op),
+            },
             .subtract => try binaryOp(.number, f64, struct {
                 fn op(a: f64, b: f64) f64 {
                     return a - b;
@@ -186,4 +208,14 @@ fn run() !void {
     }
 
     try bw.flush();
+}
+
+fn concatenate() !void {
+    const b = pop().asCstring();
+    const a = pop().asCstring();
+
+    const chars = try std.mem.concat(g.allocator, u8, &.{ a, b });
+
+    const result = obj_mod.takeString(chars);
+    push(Value.initObj(result));
 }

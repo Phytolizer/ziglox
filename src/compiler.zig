@@ -6,6 +6,7 @@ const Token = scanner.Token;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const debug = @import("debug.zig");
+const obj = @import("obj.zig");
 
 pub fn compile(source: []const u8, chunk: *Chunk) !void {
     scanner.init(source);
@@ -205,7 +206,7 @@ const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .less = .{ .infix = binary, .precedence = .comparison },
     .less_equal = .{ .infix = binary, .precedence = .comparison },
     .identifier = .{},
-    .string = .{},
+    .string = .{ .prefix = string },
     .number = .{ .prefix = number },
     .@"and" = .{},
     .class = .{},
@@ -254,4 +255,10 @@ fn literal() ParseError!void {
         .false => try emitOp(.false),
         else => unreachable,
     }
+}
+
+fn string() ParseError!void {
+    try emitConstant(Value.initObj(try obj.copyString(
+        parser.previous.text[1 .. parser.previous.text.len - 1],
+    )));
 }
