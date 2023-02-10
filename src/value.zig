@@ -1,10 +1,33 @@
+const std = @import("std");
 const g = @import("global.zig");
 const memory = @import("memory.zig");
 
-pub const Value = f64;
+pub const Value = union(Kind) {
+    boolean: bool,
+    nil,
+    number: f64,
+
+    pub const Kind = enum {
+        boolean,
+        nil,
+        number,
+    };
+
+    pub fn isBoolean(self: @This()) bool {
+        return @as(Kind, self) == .boolean;
+    }
+
+    pub fn isNil(self: @This()) bool {
+        return @as(Kind, self) == .nil;
+    }
+
+    pub fn isNumber(self: @This()) bool {
+        return @as(Kind, self) == .number;
+    }
+};
 
 pub fn printValue(writer: anytype, v: Value) !void {
-    try writer.print("{d}", .{v});
+    try writer.print("{d}", .{v.number});
 }
 
 pub const ValueArray = struct {

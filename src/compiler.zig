@@ -112,7 +112,7 @@ fn expression() ParseError!void {
 
 fn number() ParseError!void {
     const value = std.fmt.parseFloat(f64, parser.previous.text) catch unreachable;
-    try emitConstant(value);
+    try emitConstant(.{ .number = value });
 }
 
 fn grouping() ParseError!void {

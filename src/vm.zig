@@ -38,6 +38,17 @@ fn pop() Value {
     return vm.stack[vm.stack_top];
 }
 
+fn peek(distance: usize) Value {
+    return vm.stack[vm.stack_top - 1 - distance];
+}
+
+fn runtimeError(comptime fmt: []const u8, args: anytype) void {
+    std.debug.print(fmt, args);
+    const instruction = vm.ip - 1;
+    const line = vm.chunk.?.getLine(instruction);
+    std.debug.print("\n[line {d}] in script\n", .{line});
+}
+
 const InterpretError = error{
     Compile,
     Runtime,
@@ -77,10 +88,14 @@ fn run() !void {
         }
     };
     const binaryOp = struct {
-        fn f(comptime op: fn (Value, Value) Value) void {
-            const b = pop();
-            const a = pop();
-            push(op(a, b));
+        fn f(comptime value_kind: Value.Kind, comptime op: fn (f64, f64) f64) !void {
+            if (!peek(0).isNumber() or !peek(1).isNumber()) {
+                runtimeError("Operands must be numbers", .{});
+                return error.Runtime;
+            }
+            const b = pop().number;
+            const a = pop().number;
+            push(@unionInit(Value, @tagName(value_kind), op(a, b)));
         }
     }.f;
 
@@ -109,28 +124,32 @@ fn run() !void {
                 const constant = Reader.readConstantLong();
                 push(constant);
             },
-            .add => binaryOp(struct {
-                fn op(a: Value, b: Value) Value {
+            .add => try binaryOp(.number, struct {
+                fn op(a: f64, b: f64) f64 {
                     return a + b;
                 }
             }.op),
-            .subtract => binaryOp(struct {
-                fn op(a: Value, b: Value) Value {
+            .subtract => try binaryOp(.number, struct {
+                fn op(a: f64, b: f64) f64 {
                     return a - b;
                 }
             }.op),
-            .multiply => binaryOp(struct {
-                fn op(a: Value, b: Value) Value {
+            .multiply => try binaryOp(.number, struct {
+                fn op(a: f64, b: f64) f64 {
                     return a * b;
                 }
             }.op),
-            .divide => binaryOp(struct {
-                fn op(a: Value, b: Value) Value {
+            .divide => try binaryOp(.number, struct {
+                fn op(a: f64, b: f64) f64 {
                     return a / b;
                 }
             }.op),
             .negate => {
-                push(-pop());
+                if (!peek(0).isNumber()) {
+                    runtimeError("Operand must be a number", .{});
+                    return error.Runtime;
+                }
+                push(.{ .number = -pop().number });
             },
             .@"return" => {
                 try value_mod.printValue(bww, pop());
