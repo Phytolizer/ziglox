@@ -45,11 +45,7 @@ pub const Value = union(Kind) {
             .boolean => a.boolean == b.boolean,
             .nil => true,
             .number => a.number == b.number,
-            .obj => {
-                const a_string = a.asCstring();
-                const b_string = b.asCstring();
-                return std.mem.eql(u8, a_string, b_string);
-            },
+            .obj => a.obj == b.obj,
         };
     }
 

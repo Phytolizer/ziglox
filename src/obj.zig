@@ -47,15 +47,33 @@ pub fn castObj(obj: anytype) *Obj {
 pub const ObjString = struct {
     obj: Obj,
     text: []u8,
+    hash: u32,
 };
 
+fn hashString(text: []const u8) u32 {
+    var hash: u32 = 2166136261;
+    for (text) |c| {
+        hash ^= c;
+        hash *%= 16777619;
+    }
+    return hash;
+}
+
 pub fn copyString(text: []const u8) !*ObjString {
-    const heap_chars = try g.allocator.dupe(u8, text);
-    return try allocateString(heap_chars);
+    const hash = hashString(text);
+    return vm.strings.findString(text, hash) orelse blk: {
+        const heap_chars = try g.allocator.dupe(u8, text);
+        break :blk try allocateString(heap_chars, hash);
+    };
 }
 
 pub fn takeString(text: []u8) !*ObjString {
-    return try allocateString(text);
+    const hash = hashString(text);
+    if (vm.strings.findString(text, hash)) |interned| {
+        g.allocator.free(text);
+        return interned;
+    }
+    return try allocateString(text, hash);
 }
 
 fn allocateObj(comptime T: type, kind: Obj.Kind) !*T {
@@ -68,8 +86,10 @@ fn allocateObj(comptime T: type, kind: Obj.Kind) !*T {
     return obj;
 }
 
-fn allocateString(text: []u8) !*ObjString {
+fn allocateString(text: []u8, hash: u32) !*ObjString {
     const obj = try allocateObj(ObjString, .string);
     obj.text = text;
+    obj.hash = hash;
+    _ = try vm.strings.set(obj, .nil);
     return obj;
 }

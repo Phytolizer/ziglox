@@ -9,6 +9,8 @@ const compiler = @import("compiler.zig");
 const g = @import("global.zig");
 const obj_mod = @import("obj.zig");
 const Obj = obj_mod.Obj;
+const table_mod = @import("table.zig");
+const Table = table_mod.Table;
 
 const STACK_MAX = 256;
 
@@ -18,6 +20,7 @@ const VM = struct {
     stack: [STACK_MAX]Value = undefined,
     stack_top: usize = 0,
     objects: ?*Obj = null,
+    strings: Table = .{},
 };
 
 pub var vm = VM{};
@@ -31,6 +34,7 @@ fn resetStack() void {
 }
 
 pub fn deinit() void {
+    vm.strings.deinit();
     freeObjects();
 }
 
@@ -216,6 +220,6 @@ fn concatenate() !void {
 
     const chars = try std.mem.concat(g.allocator, u8, &.{ a, b });
 
-    const result = obj_mod.takeString(chars);
+    const result = try obj_mod.takeString(chars);
     push(Value.initObj(result));
 }
