@@ -24,6 +24,14 @@ pub const Value = union(Kind) {
     pub fn isNumber(self: @This()) bool {
         return @as(Kind, self) == .number;
     }
+
+    pub fn equals(a: @This(), b: @This()) bool {
+        return switch (a) {
+            .boolean => |ab| b.isBoolean() and ab == b.boolean,
+            .nil => b.isNil(),
+            .number => |an| b.isNumber() and an == b.number,
+        };
+    }
 };
 
 pub fn printValue(writer: anytype, v: Value) !void {

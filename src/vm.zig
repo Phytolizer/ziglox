@@ -92,7 +92,7 @@ fn run() !void {
         }
     };
     const binaryOp = struct {
-        fn f(comptime value_kind: Value.Kind, comptime op: fn (f64, f64) f64) !void {
+        fn f(comptime value_kind: Value.Kind, comptime T: type, comptime op: fn (f64, f64) T) !void {
             if (!peek(0).isNumber() or !peek(1).isNumber()) {
                 runtimeError("Operands must be numbers.", .{});
                 return error.Runtime;
@@ -131,22 +131,37 @@ fn run() !void {
             .nil => push(.nil),
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
-            .add => try binaryOp(.number, struct {
+            .equal => {
+                const b = pop();
+                const a = pop();
+                push(.{ .boolean = a.equals(b) });
+            },
+            .greater => try binaryOp(.boolean, bool, struct {
+                fn op(a: f64, b: f64) bool {
+                    return a > b;
+                }
+            }.op),
+            .less => try binaryOp(.boolean, bool, struct {
+                fn op(a: f64, b: f64) bool {
+                    return a < b;
+                }
+            }.op),
+            .add => try binaryOp(.number, f64, struct {
                 fn op(a: f64, b: f64) f64 {
                     return a + b;
                 }
             }.op),
-            .subtract => try binaryOp(.number, struct {
+            .subtract => try binaryOp(.number, f64, struct {
                 fn op(a: f64, b: f64) f64 {
                     return a - b;
                 }
             }.op),
-            .multiply => try binaryOp(.number, struct {
+            .multiply => try binaryOp(.number, f64, struct {
                 fn op(a: f64, b: f64) f64 {
                     return a * b;
                 }
             }.op),
-            .divide => try binaryOp(.number, struct {
+            .divide => try binaryOp(.number, f64, struct {
                 fn op(a: f64, b: f64) f64 {
                     return a / b;
                 }

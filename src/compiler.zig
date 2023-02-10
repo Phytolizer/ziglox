@@ -92,6 +92,12 @@ fn emitBytes(bytes: []const u8) !void {
     }
 }
 
+fn emitOps(ops: []const chunk_mod.OpCode) !void {
+    for (ops) |op| {
+        try emitOp(op);
+    }
+}
+
 fn emitReturn() !void {
     try emitOp(.@"return");
 }
@@ -140,6 +146,12 @@ fn binary() ParseError!void {
     try parsePrecedence(@intToEnum(Precedence, @enumToInt(rule.precedence) + 1));
 
     switch (operator_kind) {
+        .bang_equal => try emitOps(&.{ .equal, .not }),
+        .equal_equal => try emitOp(.equal),
+        .greater => try emitOp(.greater),
+        .greater_equal => try emitOps(&.{ .less, .not }),
+        .less => try emitOp(.less),
+        .less_equal => try emitOps(&.{ .greater, .not }),
         .plus => try emitOp(.add),
         .minus => try emitOp(.subtract),
         .star => try emitOp(.multiply),
@@ -185,13 +197,13 @@ const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .slash = .{ .infix = binary, .precedence = .factor },
     .star = .{ .infix = binary, .precedence = .factor },
     .bang = .{ .prefix = unary },
-    .bang_equal = .{},
+    .bang_equal = .{ .infix = binary, .precedence = .equality },
     .equal = .{},
-    .equal_equal = .{},
-    .greater = .{},
-    .greater_equal = .{},
-    .less = .{},
-    .less_equal = .{},
+    .equal_equal = .{ .infix = binary, .precedence = .equality },
+    .greater = .{ .infix = binary, .precedence = .comparison },
+    .greater_equal = .{ .infix = binary, .precedence = .comparison },
+    .less = .{ .infix = binary, .precedence = .comparison },
+    .less_equal = .{ .infix = binary, .precedence = .comparison },
     .identifier = .{},
     .string = .{},
     .number = .{ .prefix = number },
