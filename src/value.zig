@@ -27,7 +27,11 @@ pub const Value = union(Kind) {
 };
 
 pub fn printValue(writer: anytype, v: Value) !void {
-    try writer.print("{d}", .{v.number});
+    switch (v) {
+        .boolean => |b| try writer.print("{s}", .{if (b) "true" else "false"}),
+        .nil => try writer.print("nil", .{}),
+        .number => |n| try writer.print("{d}", .{n}),
+    }
 }
 
 pub const ValueArray = struct {

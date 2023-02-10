@@ -90,7 +90,7 @@ fn run() !void {
     const binaryOp = struct {
         fn f(comptime value_kind: Value.Kind, comptime op: fn (f64, f64) f64) !void {
             if (!peek(0).isNumber() or !peek(1).isNumber()) {
-                runtimeError("Operands must be numbers", .{});
+                runtimeError("Operands must be numbers.", .{});
                 return error.Runtime;
             }
             const b = pop().number;
@@ -124,6 +124,9 @@ fn run() !void {
                 const constant = Reader.readConstantLong();
                 push(constant);
             },
+            .nil => push(.nil),
+            .true => push(.{ .boolean = true }),
+            .false => push(.{ .boolean = false }),
             .add => try binaryOp(.number, struct {
                 fn op(a: f64, b: f64) f64 {
                     return a + b;

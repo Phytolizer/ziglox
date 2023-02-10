@@ -9,6 +9,7 @@ const debug = @import("debug.zig");
 
 pub fn compile(source: []const u8, chunk: *Chunk) !void {
     scanner.init(source);
+    parser = .{};
     compiling_chunk = chunk;
     advance();
     try expression();
@@ -196,17 +197,17 @@ const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .@"and" = .{},
     .class = .{},
     .@"else" = .{},
-    .false = .{},
+    .false = .{ .prefix = literal },
     .@"for" = .{},
     .fun = .{},
     .@"if" = .{},
-    .nil = .{},
+    .nil = .{ .prefix = literal },
     .@"or" = .{},
     .print = .{},
     .@"return" = .{},
     .super = .{},
     .this = .{},
-    .true = .{},
+    .true = .{ .prefix = literal },
     .@"var" = .{},
     .@"while" = .{},
     .@"error" = .{},
@@ -230,5 +231,14 @@ fn parsePrecedence(precedence: Precedence) ParseError!void {
         advance();
         const infixRule = getRule(parser.previous.kind).infix orelse unreachable;
         try infixRule();
+    }
+}
+
+fn literal() ParseError!void {
+    switch (parser.previous.kind) {
+        .nil => try emitOp(.nil),
+        .true => try emitOp(.true),
+        .false => try emitOp(.false),
+        else => unreachable,
     }
 }
