@@ -13,8 +13,11 @@ pub fn compile(source: []const u8, chunk: *Chunk) !void {
     parser = .{};
     compiling_chunk = chunk;
     advance();
-    try expression();
-    consume(.eof, "Expect end of expression.");
+
+    while (!match(.eof)) {
+        try declaration();
+    }
+
     try endCompiler();
     if (parser.had_error)
         return error.Compile;
@@ -261,4 +264,37 @@ fn string() ParseError!void {
     try emitConstant(Value.initObj(try obj.copyString(
         parser.previous.text[1 .. parser.previous.text.len - 1],
     )));
+}
+
+fn declaration() !void {
+    try statement();
+}
+
+fn statement() !void {
+    if (match(.print))
+        try printStatement()
+    else
+        try expressionStatement();
+}
+
+fn printStatement() !void {
+    try expression();
+    consume(.semicolon, "Expect ';' after value.");
+    try emitOp(.print);
+}
+
+fn expressionStatement() !void {
+    try expression();
+    consume(.semicolon, "Expect ';' after expression.");
+    try emitOp(.pop);
+}
+
+fn match(kind: Token.Kind) bool {
+    if (!check(kind)) return false;
+    advance();
+    return true;
+}
+
+fn check(kind: Token.Kind) bool {
+    return parser.current.kind == kind;
 }

@@ -150,6 +150,7 @@ fn run() !void {
             .nil => push(.nil),
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
+            .pop => _ = pop(),
             .equal => {
                 const b = pop();
                 const a = pop();
@@ -200,9 +201,12 @@ fn run() !void {
                 }
                 push(.{ .number = -pop().number });
             },
-            .@"return" => {
+            .print => {
                 try value_mod.printValue(bww, pop());
                 try bww.writeByte('\n');
+                break;
+            },
+            .@"return" => {
                 break;
             },
             _ => {

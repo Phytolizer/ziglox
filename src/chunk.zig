@@ -9,6 +9,7 @@ pub const OpCode = enum(u8) {
     nil,
     true,
     false,
+    pop,
     equal,
     greater,
     less,
@@ -18,8 +19,23 @@ pub const OpCode = enum(u8) {
     divide,
     not,
     negate,
+    print,
     @"return",
     _,
+
+    pub const names = blk: {
+        const tags = std.meta.tags(@This());
+        var result: []const []const u8 = &.{};
+        for (tags) |tag| {
+            const name_lower = @tagName(tag);
+            var name: []const u8 = "OP_";
+            for (name_lower) |c| {
+                name = name ++ &[_]u8{std.ascii.toUpper(c)};
+            }
+            result = result ++ &[_][]const u8{name};
+        }
+        break :blk result;
+    };
 };
 
 const Line = struct {
