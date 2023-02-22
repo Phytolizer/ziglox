@@ -121,6 +121,43 @@ fn expression() ParseError!void {
     try parsePrecedence(.assignment);
 }
 
+fn identifierConstant(name: Token) !usize {
+    return try currentChunk().addConstant(.{
+        .obj = obj.castObj(try obj.copyString(name.text)),
+    });
+}
+
+fn parseVariable(error_message: []const u8) !usize {
+    consume(.identifier, error_message);
+    return identifierConstant(parser.previous);
+}
+
+fn varDeclaration() !void {
+    const global = try parseVariable("Expect variable name.");
+
+    if (match(.equal))
+        try expression()
+    else
+        try emitOp(.nil);
+    consume(.semicolon, "Expect ';' after variable declaration.");
+
+    try defineVariable(global);
+}
+
+fn defineVariable(global: usize) !void {
+    if (global <= std.math.maxInt(u8)) {
+        try emitOp(.define_global);
+        try emitByte(@intCast(u8, global));
+    } else if (global <= std.math.maxInt(u24)) {
+        try emitOp(.define_global_long);
+        try emitBytes(&.{
+            @truncate(u8, global >> 16),
+            @truncate(u8, global >> 8),
+            @truncate(u8, global),
+        });
+    } else unreachable;
+}
+
 fn number() ParseError!void {
     const value = std.fmt.parseFloat(f64, parser.previous.text) catch unreachable;
     try emitConstant(.{ .number = value });
@@ -267,7 +304,10 @@ fn string() ParseError!void {
 }
 
 fn declaration() !void {
-    try statement();
+    if (match(.@"var"))
+        try varDeclaration()
+    else
+        try statement();
 
     if (parser.panic_mode) synchronize();
 }

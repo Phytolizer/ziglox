@@ -9,6 +9,7 @@ const compiler = @import("compiler.zig");
 const g = @import("global.zig");
 const obj_mod = @import("obj.zig");
 const Obj = obj_mod.Obj;
+const ObjString = obj_mod.ObjString;
 const table_mod = @import("table.zig");
 const Table = table_mod.Table;
 
@@ -20,6 +21,7 @@ const VM = struct {
     stack: [STACK_MAX]Value = undefined,
     stack_top: usize = 0,
     objects: ?*Obj = null,
+    globals: Table = .{},
     strings: Table = .{},
 };
 
@@ -34,6 +36,7 @@ fn resetStack() void {
 }
 
 pub fn deinit() void {
+    vm.globals.deinit();
     vm.strings.deinit();
     freeObjects();
 }
@@ -109,6 +112,12 @@ fn run() !void {
             const constant: u24 = (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
             return vm.chunk.?.constants.values[constant];
         }
+        fn readString() *ObjString {
+            return readConstant().asString();
+        }
+        fn readStringLong() *ObjString {
+            return readConstantLong().asString();
+        }
     };
     const binaryOp = struct {
         fn f(comptime value_kind: Value.Kind, comptime T: type, comptime op: fn (f64, f64) T) !void {
@@ -151,6 +160,16 @@ fn run() !void {
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
             .pop => _ = pop(),
+            .define_global => {
+                const name = Reader.readString();
+                _ = try vm.globals.set(name, peek(0));
+                _ = pop();
+            },
+            .define_global_long => {
+                const name = Reader.readStringLong();
+                _ = try vm.globals.set(name, peek(0));
+                _ = pop();
+            },
             .equal => {
                 const b = pop();
                 const a = pop();

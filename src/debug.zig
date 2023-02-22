@@ -29,8 +29,12 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
 
     const instruction = c.code[offset];
     switch (@intToEnum(chunk.OpCode, instruction)) {
-        .constant => return try constantInstruction(instruction, c, offset, writer),
-        .constant_long => return try constantLongInstruction(instruction, c, offset, writer),
+        .constant,
+        .define_global,
+        => return try constantInstruction(instruction, c, offset, writer),
+        .constant_long,
+        .define_global_long,
+        => return try constantLongInstruction(instruction, c, offset, writer),
         .nil,
         .true,
         .false,
