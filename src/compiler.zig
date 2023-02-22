@@ -268,6 +268,33 @@ fn string() ParseError!void {
 
 fn declaration() !void {
     try statement();
+
+    if (parser.panic_mode) synchronize();
+}
+
+fn synchronize() void {
+    parser.panic_mode = false;
+
+    while (parser.current.kind != .eof) {
+        if (parser.previous.kind == .semicolon) return;
+
+        switch (parser.current.kind) {
+            .class,
+            .fun,
+            .@"var",
+            .@"for",
+            .@"if",
+            .@"while",
+            .print,
+            .@"return",
+            => return,
+            else => {
+                // Do nothing.
+            },
+        }
+
+        advance();
+    }
 }
 
 fn statement() !void {
