@@ -160,6 +160,24 @@ fn run() !void {
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
             .pop => _ = pop(),
+            .get_global => {
+                const name = Reader.readString();
+                if (vm.globals.get(name)) |value| {
+                    push(value);
+                } else {
+                    runtimeError("Undefined variable '{s}'.", .{name.text});
+                    return error.Runtime;
+                }
+            },
+            .get_global_long => {
+                const name = Reader.readStringLong();
+                if (vm.globals.get(name)) |value| {
+                    push(value);
+                } else {
+                    runtimeError("Undefined variable '{s}'.", .{name.text});
+                    return error.Runtime;
+                }
+            },
             .define_global => {
                 const name = Reader.readString();
                 _ = try vm.globals.set(name, peek(0));

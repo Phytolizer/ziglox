@@ -245,7 +245,7 @@ const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .greater_equal = .{ .infix = binary, .precedence = .comparison },
     .less = .{ .infix = binary, .precedence = .comparison },
     .less_equal = .{ .infix = binary, .precedence = .comparison },
-    .identifier = .{},
+    .identifier = .{ .prefix = variable },
     .string = .{ .prefix = string },
     .number = .{ .prefix = number },
     .@"and" = .{},
@@ -301,6 +301,25 @@ fn string() ParseError!void {
     try emitConstant(Value.initObj(try obj.copyString(
         parser.previous.text[1 .. parser.previous.text.len - 1],
     )));
+}
+
+fn namedVariable(name: Token) ParseError!void {
+    const arg = try identifierConstant(name);
+    if (arg <= std.math.maxInt(u8)) {
+        try emitOp(.get_global);
+        try emitByte(@intCast(u8, arg));
+    } else if (arg <= std.math.maxInt(u24)) {
+        try emitOp(.get_global_long);
+        try emitBytes(&.{
+            @truncate(u8, arg >> 16),
+            @truncate(u8, arg >> 8),
+            @truncate(u8, arg),
+        });
+    } else unreachable;
+}
+
+fn variable() ParseError!void {
+    try namedVariable(parser.previous);
 }
 
 fn declaration() !void {
