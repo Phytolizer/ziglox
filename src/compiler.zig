@@ -106,12 +106,28 @@ fn emitOps(ops: []const OpCode) !void {
     }
 }
 
+fn emitJump(instruction: OpCode) !usize {
+    try emitOp(instruction);
+    try emitBytes(&.{ 0xff, 0xff });
+    return currentChunk().code.len - 2;
+}
+
 fn emitReturn() !void {
     try emitOp(.@"return");
 }
 
 fn emitConstant(value: Value) !void {
     try currentChunk().writeConstant(value, parser.previous.line);
+}
+
+fn patchJump(offset: usize) void {
+    const jump = currentChunk().code.len - offset - 2;
+    if (jump > std.math.maxInt(u16)) {
+        errorAtPrevious("Too much code to jump over.");
+    }
+
+    currentChunk().code[offset] = @truncate(u8, jump >> 8);
+    currentChunk().code[offset + 1] = @truncate(u8, jump);
 }
 
 fn initCompiler(compiler: *Compiler) void {
@@ -488,6 +504,8 @@ fn synchronize() void {
 fn statement() ParseError!void {
     if (match(.print)) {
         try printStatement();
+    } else if (match(.@"if")) {
+        try ifStatement();
     } else if (match(.left_brace)) {
         beginScope();
         try block();
@@ -507,6 +525,24 @@ fn expressionStatement() !void {
     try expression();
     consume(.semicolon, "Expect ';' after expression.");
     try emitOp(.pop);
+}
+
+fn ifStatement() !void {
+    consume(.left_paren, "Expect '(' after 'if'.");
+    try expression();
+    consume(.right_paren, "Expect ')' after condition.");
+
+    const then_jump = try emitJump(.jump_if_false);
+    try emitOp(.pop);
+    try statement();
+
+    const else_jump = try emitJump(.jump);
+
+    patchJump(then_jump);
+    try emitOp(.pop);
+
+    if (match(.@"else")) try statement();
+    patchJump(else_jump);
 }
 
 fn match(kind: Token.Kind) bool {

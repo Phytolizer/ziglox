@@ -100,6 +100,12 @@ fn run() !void {
             vm.ip += 1;
             return byte;
         }
+        fn readShort() u16 {
+            const hi = readByte();
+            const lo = readByte();
+
+            return (@as(u16, hi) << 8) | lo;
+        }
         fn read3Bytes() u24 {
             const hi = readByte();
             const md = readByte();
@@ -265,6 +271,14 @@ fn run() !void {
                 try value_mod.printValue(bww, pop());
                 try bww.writeByte('\n');
                 break;
+            },
+            .jump => {
+                const offset = Reader.readShort();
+                vm.ip += offset;
+            },
+            .jump_if_false => {
+                const offset = Reader.readShort();
+                if (isFalsey(peek(0))) vm.ip += offset;
             },
             .@"return" => {
                 break;

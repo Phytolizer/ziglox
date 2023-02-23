@@ -3,7 +3,7 @@ const chunk = @import("chunk.zig");
 const Chunk = chunk.Chunk;
 const value = @import("value.zig");
 
-pub const TRACE_EXECUTION = false;
+pub const TRACE_EXECUTION = true;
 pub const PRINT_CODE = false;
 
 pub fn disassembleChunk(c: *const Chunk, name: []const u8) !void {
@@ -45,6 +45,9 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
         .get_local_long,
         .set_local_long,
         => return try numLongInstruction(instruction, c, offset, writer),
+        .jump,
+        .jump_if_false,
+        => return try jumpInstruction(instruction, 1, c, offset, writer),
         .nil,
         .true,
         .false,
@@ -105,4 +108,20 @@ fn numLongInstruction(kind: usize, c: *const Chunk, offset: usize, writer: anyty
     const num: u24 = (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
     try writer.print("{s:<16} {d:>4}\n", .{ chunk.OpCode.names[kind], num });
     return offset + 4;
+}
+
+fn jumpInstruction(
+    kind: usize,
+    comptime sign: comptime_int,
+    c: *const Chunk,
+    offset: usize,
+    writer: anytype,
+) !usize {
+    const jump = (@as(u16, c.code[offset + 1]) << 8) | c.code[offset + 2];
+    try writer.print("{s:<16} {d:4} -> {d}\n", .{
+        chunk.OpCode.names[kind],
+        offset,
+        offset + 3 + sign * jump,
+    });
+    return offset + 3;
 }
