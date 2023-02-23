@@ -196,9 +196,9 @@ fn declareVariable() void {
     var i = current.?.local_count;
     while (i > 0) : (i -= 1) {
         const local = &current.?.locals[i - 1];
-        if (local.depth != null and local.depth.? < current.?.scope_depth) {
+        if (local.depth) |depth| if (depth < current.?.scope_depth) {
             break;
-        }
+        };
 
         if (identifiersEqual(name.*, local.name)) {
             errorAtPrevious("Already a variable with this name in this scope.");
