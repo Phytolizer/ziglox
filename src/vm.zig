@@ -39,8 +39,8 @@ const VM = struct {
 pub var vm = VM{};
 
 fn clockNative(_: []const Value) Value {
-    const now = std.time.timestamp();
-    return .{ .number = @intToFloat(f64, now) };
+    const now = std.time.milliTimestamp();
+    return .{ .number = @intToFloat(f64, now) / 1000.0 };
 }
 
 pub fn init() !void {
