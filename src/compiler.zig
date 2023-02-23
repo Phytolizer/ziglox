@@ -223,7 +223,8 @@ fn parseFunction(@"type": FunctionType) ParseError!void {
     try block();
 
     const function = try endCompiler();
-    try emitConstant(Value.initObj(function));
+    const constant = try currentChunk().addConstant(Value.initObj(function));
+    try emitDynamic(.closure, .closure_long, constant);
 }
 
 fn funDeclaration() ParseError!void {
@@ -293,7 +294,7 @@ fn parseVariable(error_message: []const u8) !usize {
     declareVariable();
     if (current.?.scope_depth > 0) return 0;
 
-    return identifierConstant(parser.previous);
+    return try identifierConstant(parser.previous);
 }
 
 fn markInitialized() void {

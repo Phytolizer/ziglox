@@ -7,6 +7,7 @@ const Value = value_mod.Value;
 const Obj = value_mod.Obj;
 const ObjString = value_mod.ObjString;
 const ObjFunction = value_mod.ObjFunction;
+const ObjClosure = value_mod.ObjClosure;
 const NativeFn = value_mod.NativeFn;
 const debug = @import("debug.zig");
 const compiler = @import("compiler.zig");
@@ -19,7 +20,7 @@ const FRAMES_MAX = 64;
 const STACK_MAX = FRAMES_MAX * UINT8_COUNT;
 
 const CallFrame = struct {
-    function: *ObjFunction,
+    closure: *ObjClosure,
     ip: usize,
     slots: []Value,
     slots_offset: usize,
@@ -82,11 +83,11 @@ fn peek(distance: usize) Value {
     return vm.stack[vm.stack_top - 1 - distance];
 }
 
-fn call(function: *ObjFunction, arg_count: usize) !void {
-    if (arg_count != function.arity) {
+fn call(closure: *ObjClosure, arg_count: usize) !void {
+    if (arg_count != closure.function.arity) {
         runtimeError(
             "Expected {d} arguments but got {d}.",
-            .{ function.arity, arg_count },
+            .{ closure.function.arity, arg_count },
         );
         return error.Runtime;
     }
@@ -98,7 +99,7 @@ fn call(function: *ObjFunction, arg_count: usize) !void {
 
     const frame = &vm.frames[vm.frame_count];
     vm.frame_count += 1;
-    frame.function = function;
+    frame.closure = closure;
     frame.ip = 0;
     frame.slots_offset = vm.stack_top - arg_count - 1;
     frame.slots = vm.stack[frame.slots_offset..vm.stack.len];
@@ -107,8 +108,8 @@ fn call(function: *ObjFunction, arg_count: usize) !void {
 fn callValue(callee: Value, arg_count: usize) !void {
     if (callee.isObj()) {
         switch (callee.objKind()) {
-            .function => {
-                try call(callee.asFunction(), arg_count);
+            .closure => {
+                try call(callee.asClosure(), arg_count);
                 return;
             },
             .native => {
@@ -135,7 +136,7 @@ fn runtimeError(comptime fmt: []const u8, args: anytype) void {
     var i = vm.frame_count;
     while (i > 0) : (i -= 1) {
         const frame = &vm.frames[i - 1];
-        const function = frame.function;
+        const function = frame.closure.function;
         const instruction = frame.ip;
         const line = function.chunk.getLine(instruction);
         std.debug.print("[line {d}] in ", .{line});
@@ -166,7 +167,10 @@ pub fn interpret(source: []const u8) InterpretError!void {
     const function = try compiler.compile(source);
 
     push(Value.initObj(function));
-    try call(function, 0);
+    const closure = try value_mod.newClosure(function);
+    _ = pop();
+    push(Value.initObj(closure));
+    try call(closure, 0);
 
     try run();
 }
@@ -177,7 +181,7 @@ fn run() !void {
         frame: **CallFrame,
 
         fn readByte(self: @This()) u8 {
-            const byte = self.frame.*.function.chunk.code[self.frame.*.ip];
+            const byte = self.frame.*.closure.function.chunk.code[self.frame.*.ip];
             self.frame.*.ip += 1;
             return byte;
         }
@@ -196,11 +200,11 @@ fn run() !void {
         }
         fn readConstant(self: @This()) Value {
             const constant = self.readByte();
-            return self.frame.*.function.chunk.constants.values[constant];
+            return self.frame.*.closure.function.chunk.constants.values[constant];
         }
         fn readConstantLong(self: @This()) Value {
             const constant = self.read3Bytes();
-            return self.frame.*.function.chunk.constants.values[constant];
+            return self.frame.*.closure.function.chunk.constants.values[constant];
         }
         fn readString(self: @This()) *ObjString {
             return self.readConstant().asString();
@@ -246,6 +250,11 @@ fn run() !void {
                 return error.Runtime;
             }
         }
+        fn doClosure(self: @This(), comptime readFn: fn (Reader) Value) !void {
+            const function = readFn(self.reader).asFunction();
+            const closure = try value_mod.newClosure(function);
+            push(Value.initObj(closure));
+        }
         fn readNum(self: @This(), comptime long: bool) usize {
             return if (long)
                 self.reader.read3Bytes()
@@ -275,7 +284,11 @@ fn run() !void {
                 try bww.writeAll(" ]");
             }
             try bww.writeByte('\n');
-            _ = try debug.disassembleInstruction(&frame.function.chunk, frame.ip, bww);
+            _ = try debug.disassembleInstruction(
+                &frame.closure.function.chunk,
+                frame.ip,
+                bww,
+            );
             try bw.flush();
         }
         const instruction = reader.readByte();
@@ -373,6 +386,8 @@ fn run() !void {
                 try callValue(peek(arg_count), arg_count);
                 frame = &vm.frames[vm.frame_count - 1];
             },
+            .closure => try lengthOps.doClosure(Reader.readConstant),
+            .closure_long => try lengthOps.doClosure(Reader.readConstantLong),
             .@"return" => {
                 const result = pop();
                 vm.frame_count -= 1;

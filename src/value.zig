@@ -12,6 +12,7 @@ pub const Obj = struct {
     next: ?*Obj = null,
 
     pub const Kind = enum {
+        closure,
         function,
         native,
         string,
@@ -19,6 +20,10 @@ pub const Obj = struct {
 
     pub fn deinit(self: *@This()) void {
         switch (self.kind) {
+            .closure => {
+                const closure = @fieldParentPtr(ObjClosure, "obj", self);
+                g.allocator.destroy(closure);
+            },
             .function => {
                 const function = @fieldParentPtr(ObjFunction, "obj", self);
                 function.chunk.deinit();
@@ -136,6 +141,17 @@ pub fn newNative(function: *const NativeFn) !*ObjNative {
     return native;
 }
 
+pub const ObjClosure = struct {
+    obj: Obj,
+    function: *ObjFunction,
+};
+
+pub fn newClosure(function: *ObjFunction) !*ObjClosure {
+    const closure = try allocateObj(ObjClosure, .closure);
+    closure.function = function;
+    return closure;
+}
+
 pub const Value = union(Kind) {
     boolean: bool,
     nil,
@@ -211,6 +227,14 @@ pub const Value = union(Kind) {
         return @fieldParentPtr(ObjNative, "obj", self.obj).function;
     }
 
+    pub fn isClosure(self: @This()) bool {
+        return isObjKind(self, .closure);
+    }
+
+    pub fn asClosure(self: @This()) *ObjClosure {
+        return @fieldParentPtr(ObjClosure, "obj", self.obj);
+    }
+
     /// This method exists to allow passing a subclass of Obj directly, e.g. *ObjString.
     pub fn initObj(obj: anytype) @This() {
         return .{ .obj = castObj(obj) };
@@ -226,15 +250,21 @@ pub fn printValue(writer: anytype, v: Value) !void {
     }
 }
 
+fn printFunction(writer: anytype, function: *ObjFunction) !void {
+    if (function.name) |name| {
+        try writer.print("<fn {s}>", .{name.text});
+    } else {
+        try writer.writeAll("<script>");
+    }
+}
+
 fn printObj(writer: anytype, v: Value) !void {
     switch (v.objKind()) {
+        .closure => {
+            try printFunction(writer, v.asClosure().function);
+        },
         .function => {
-            const function = v.asFunction();
-            if (function.name) |name| {
-                try writer.print("<fn {s}>", .{name.text});
-            } else {
-                try writer.writeAll("<script>");
-            }
+            try printFunction(writer, v.asFunction());
         },
         .native => {
             try writer.writeAll("<native fn>");
