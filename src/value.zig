@@ -4,6 +4,7 @@ const memory = @import("memory.zig");
 const obj_mod = @import("obj.zig");
 const Obj = obj_mod.Obj;
 const ObjString = obj_mod.ObjString;
+const ObjFunction = obj_mod.ObjFunction;
 const castObj = obj_mod.castObj;
 
 pub const Value = union(Kind) {
@@ -65,6 +66,14 @@ pub const Value = union(Kind) {
         return self.asString().text;
     }
 
+    pub fn isFunction(self: @This()) bool {
+        return isObjKind(self, .function);
+    }
+
+    pub fn asFunction(self: @This()) *ObjFunction {
+        return @fieldParentPtr(ObjFunction, "obj", self.obj);
+    }
+
     /// This method exists to allow passing a subclass of Obj directly, e.g. *ObjString.
     pub fn initObj(obj: anytype) @This() {
         return .{ .obj = castObj(obj) };
@@ -82,6 +91,14 @@ pub fn printValue(writer: anytype, v: Value) !void {
 
 fn printObj(writer: anytype, v: Value) !void {
     switch (v.objKind()) {
+        .function => {
+            const function = v.asFunction();
+            if (function.name) |name| {
+                try writer.print("<fn {s}>", .{name.text});
+            } else {
+                try writer.writeAll("<script>");
+            }
+        },
         .string => {
             try writer.print("{s}", .{v.asCstring()});
         },

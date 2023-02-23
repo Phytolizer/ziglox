@@ -6,16 +6,28 @@ const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const debug = @import("debug.zig");
 const compiler = @import("compiler.zig");
+const UINT8_COUNT = compiler.UINT8_COUNT;
 const g = @import("global.zig");
 const obj_mod = @import("obj.zig");
 const Obj = obj_mod.Obj;
 const ObjString = obj_mod.ObjString;
+const ObjFunction = obj_mod.ObjFunction;
 const table_mod = @import("table.zig");
 const Table = table_mod.Table;
 
-const STACK_MAX = 256;
+const FRAMES_MAX = 64;
+const STACK_MAX = FRAMES_MAX * UINT8_COUNT;
+
+const CallFrame = struct {
+    function: *ObjFunction,
+    ip: usize,
+    slots: []Value,
+};
 
 const VM = struct {
+    frames: [FRAMES_MAX]CallFrame = undefined,
+    frame_count: usize = 0,
+
     chunk: ?*Chunk = null,
     ip: usize = 0,
     stack: [STACK_MAX]Value = undefined,
@@ -69,10 +81,12 @@ fn isFalsey(v: Value) bool {
 }
 
 fn runtimeError(comptime fmt: []const u8, args: anytype) void {
-    std.debug.print(fmt, args);
-    const instruction = vm.ip - 1;
-    const line = vm.chunk.?.getLine(instruction);
-    std.debug.print("\n[line {d}] in script\n", .{line});
+    std.debug.print(fmt ++ "\n", args);
+
+    const frame = &vm.frames[vm.frame_count - 1];
+    const instruction = frame.ip - 1;
+    const line = frame.function.chunk.getLine(instruction);
+    std.debug.print("[line {d}] in script\n", .{line});
 }
 
 const InterpretError = error{
@@ -82,52 +96,57 @@ const InterpretError = error{
     std.mem.Allocator.Error;
 
 pub fn interpret(source: []const u8) InterpretError!void {
-    var chunk = Chunk.init();
-    defer chunk.deinit();
+    const function = try compiler.compile(source);
 
-    try compiler.compile(source, &chunk);
-
-    vm.chunk = &chunk;
-    vm.ip = 0;
+    push(.{ .obj = obj_mod.castObj(function) });
+    const frame = &vm.frames[vm.frame_count];
+    vm.frame_count += 1;
+    frame.function = function;
+    frame.ip = 0;
+    frame.slots = &vm.stack;
 
     try run();
 }
 
 fn run() !void {
+    const frame = &vm.frames[vm.frame_count - 1];
     const Reader = struct {
-        fn readByte() u8 {
-            const byte = vm.chunk.?.code[vm.ip];
-            vm.ip += 1;
+        frame: *CallFrame,
+
+        fn readByte(self: @This()) u8 {
+            const byte = self.frame.function.chunk.code[self.frame.ip];
+            self.frame.ip += 1;
             return byte;
         }
-        fn readShort() u16 {
-            const hi = readByte();
-            const lo = readByte();
+        fn readShort(self: @This()) u16 {
+            const hi = self.readByte();
+            const lo = self.readByte();
 
             return (@as(u16, hi) << 8) | lo;
         }
-        fn read3Bytes() u24 {
-            const hi = readByte();
-            const md = readByte();
-            const lo = readByte();
+        fn read3Bytes(self: @This()) u24 {
+            const hi = self.readByte();
+            const md = self.readByte();
+            const lo = self.readByte();
 
             return (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
         }
-        fn readConstant() Value {
-            const constant = vm.chunk.?.constants.values[readByte()];
+        fn readConstant(self: @This()) Value {
+            const constant = self.frame.function.chunk.constants.values[self.readByte()];
             return constant;
         }
-        fn readConstantLong() Value {
-            const constant = read3Bytes();
-            return vm.chunk.?.constants.values[constant];
+        fn readConstantLong(self: @This()) Value {
+            const constant = self.read3Bytes();
+            return self.frame.function.chunk.constants.values[constant];
         }
-        fn readString() *ObjString {
-            return readConstant().asString();
+        fn readString(self: @This()) *ObjString {
+            return self.readConstant().asString();
         }
-        fn readStringLong() *ObjString {
-            return readConstantLong().asString();
+        fn readStringLong(self: @This()) *ObjString {
+            return self.readConstantLong().asString();
         }
     };
+    const reader = Reader{ .frame = frame };
     const binaryOp = struct {
         fn f(comptime value_kind: Value.Kind, comptime T: type, comptime op: fn (f64, f64) T) !void {
             if (!peek(0).isNumber() or !peek(1).isNumber()) {
@@ -139,14 +158,16 @@ fn run() !void {
             push(@unionInit(Value, @tagName(value_kind), op(a, b)));
         }
     }.f;
-    const LengthOps = struct {
-        fn defineGlobal(comptime readFn: fn () *ObjString) !void {
-            const name = readFn();
+    const lengthOps = struct {
+        reader: Reader,
+
+        fn defineGlobal(self: @This(), comptime readFn: fn (Reader) *ObjString) !void {
+            const name = readFn(self.reader);
             _ = try vm.globals.set(name, peek(0));
             _ = pop();
         }
-        fn getGlobal(comptime readFn: fn () *ObjString) !void {
-            const name = readFn();
+        fn getGlobal(self: @This(), comptime readFn: fn (Reader) *ObjString) !void {
+            const name = readFn(self.reader);
             if (vm.globals.get(name)) |value| {
                 push(value);
             } else {
@@ -154,29 +175,29 @@ fn run() !void {
                 return error.Runtime;
             }
         }
-        fn setGlobal(comptime readFn: fn () *ObjString) !void {
-            const name = readFn();
+        fn setGlobal(self: @This(), comptime readFn: fn (Reader) *ObjString) !void {
+            const name = readFn(self.reader);
             if (try vm.globals.set(name, peek(0))) {
                 _ = vm.globals.delete(name);
                 runtimeError("Undefined variable '{s}'.", .{name.text});
                 return error.Runtime;
             }
         }
-        fn readNum(comptime long: bool) usize {
+        fn readNum(self: @This(), comptime long: bool) usize {
             return if (long)
-                Reader.read3Bytes()
+                self.reader.read3Bytes()
             else
-                Reader.readByte();
+                self.reader.readByte();
         }
-        fn getLocal(comptime long: bool) !void {
-            const slot = readNum(long);
-            push(vm.stack[slot]);
+        fn getLocal(self: @This(), comptime long: bool) !void {
+            const slot = self.readNum(long);
+            push(self.reader.frame.slots[slot]);
         }
-        fn setLocal(comptime long: bool) !void {
-            const slot = readNum(long);
-            vm.stack[slot] = peek(0);
+        fn setLocal(self: @This(), comptime long: bool) !void {
+            const slot = self.readNum(long);
+            self.reader.frame.slots[slot] = peek(0);
         }
-    };
+    }{ .reader = reader };
 
     var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
     const bww = bw.writer();
@@ -191,33 +212,33 @@ fn run() !void {
                 try bww.writeAll(" ]");
             }
             try bww.writeByte('\n');
-            _ = try debug.disassembleInstruction(vm.chunk.?, vm.ip, bww);
+            _ = try debug.disassembleInstruction(&frame.function.chunk, frame.ip, bww);
             try bw.flush();
         }
-        const instruction = Reader.readByte();
+        const instruction = reader.readByte();
         switch (@intToEnum(OpCode, instruction)) {
             .constant => {
-                const constant = Reader.readConstant();
+                const constant = reader.readConstant();
                 push(constant);
             },
             .constant_long => {
-                const constant = Reader.readConstantLong();
+                const constant = reader.readConstantLong();
                 push(constant);
             },
             .nil => push(.nil),
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
             .pop => _ = pop(),
-            .get_local => try LengthOps.getLocal(false),
-            .get_local_long => try LengthOps.getLocal(true),
-            .get_global => try LengthOps.getGlobal(Reader.readString),
-            .get_global_long => try LengthOps.getGlobal(Reader.readStringLong),
-            .define_global => try LengthOps.defineGlobal(Reader.readString),
-            .define_global_long => try LengthOps.defineGlobal(Reader.readStringLong),
-            .set_local => try LengthOps.setLocal(false),
-            .set_local_long => try LengthOps.setLocal(true),
-            .set_global => try LengthOps.setGlobal(Reader.readString),
-            .set_global_long => try LengthOps.setGlobal(Reader.readStringLong),
+            .get_local => try lengthOps.getLocal(false),
+            .get_local_long => try lengthOps.getLocal(true),
+            .get_global => try lengthOps.getGlobal(Reader.readString),
+            .get_global_long => try lengthOps.getGlobal(Reader.readStringLong),
+            .define_global => try lengthOps.defineGlobal(Reader.readString),
+            .define_global_long => try lengthOps.defineGlobal(Reader.readStringLong),
+            .set_local => try lengthOps.setLocal(false),
+            .set_local_long => try lengthOps.setLocal(true),
+            .set_global => try lengthOps.setGlobal(Reader.readString),
+            .set_global_long => try lengthOps.setGlobal(Reader.readStringLong),
             .equal => {
                 const b = pop();
                 const a = pop();
@@ -273,16 +294,16 @@ fn run() !void {
                 try bww.writeByte('\n');
             },
             .jump => {
-                const offset = Reader.readShort();
-                vm.ip += offset;
+                const offset = reader.readShort();
+                frame.ip += offset;
             },
             .jump_if_false => {
-                const offset = Reader.readShort();
-                if (isFalsey(peek(0))) vm.ip += offset;
+                const offset = reader.readShort();
+                if (isFalsey(peek(0))) frame.ip += offset;
             },
             .loop => {
-                const offset = Reader.readShort();
-                vm.ip -= offset;
+                const offset = reader.readShort();
+                frame.ip -= offset;
             },
             .@"return" => {
                 break;

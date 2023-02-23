@@ -8,22 +8,23 @@ const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const debug = @import("debug.zig");
 const obj = @import("obj.zig");
+const ObjFunction = obj.ObjFunction;
 
-pub fn compile(source: []const u8, chunk: *Chunk) !void {
+pub fn compile(source: []const u8) !*ObjFunction {
     scanner.init(source);
     parser = .{};
     var compiler = Compiler{};
-    initCompiler(&compiler);
-    compiling_chunk = chunk;
+    try initCompiler(&compiler, .script);
     advance();
 
     while (!match(.eof)) {
         try declaration();
     }
 
-    try endCompiler();
+    const function = try endCompiler();
     if (parser.had_error)
         return error.Compile;
+    return function;
 }
 
 const Parser = struct {
@@ -35,10 +36,9 @@ const Parser = struct {
 
 var parser = Parser{};
 var current: ?*Compiler = null;
-var compiling_chunk: *Chunk = undefined;
 
 fn currentChunk() *Chunk {
-    return compiling_chunk;
+    return &current.?.function.chunk;
 }
 
 fn advance() void {
@@ -144,15 +144,28 @@ fn patchJump(offset: usize) void {
     currentChunk().code[offset + 1] = @truncate(u8, jump);
 }
 
-fn initCompiler(compiler: *Compiler) void {
+fn initCompiler(compiler: *Compiler, @"type": FunctionType) !void {
+    compiler.type = @"type";
+    compiler.function = try obj.newFunction();
     current = compiler;
+
+    const local = &current.?.locals[current.?.local_count];
+    current.?.local_count += 1;
+    local.depth = 0;
+    local.name.text = "";
 }
 
-fn endCompiler() !void {
+fn endCompiler() !*ObjFunction {
     try emitReturn();
+    const function = current.?.function;
     if (debug.PRINT_CODE and !parser.had_error) {
-        try debug.disassembleChunk(currentChunk(), "code");
+        try debug.disassembleChunk(
+            currentChunk(),
+            if (function.name) |name| name.text else "<script>",
+        );
     }
+
+    return function;
 }
 
 fn beginScope() void {
@@ -354,14 +367,22 @@ const ParseRule = struct {
     precedence: Precedence = .none,
 };
 
-const UINT8_COUNT = std.math.maxInt(u8) + 1;
+pub const UINT8_COUNT = std.math.maxInt(u8) + 1;
 
 const Local = struct {
     name: Token,
     depth: ?usize,
 };
 
+const FunctionType = enum {
+    function,
+    script,
+};
+
 const Compiler = struct {
+    function: *ObjFunction = undefined,
+    type: FunctionType = .script,
+
     locals: [UINT8_COUNT]Local = undefined,
     local_count: usize = 0,
     scope_depth: usize = 0,

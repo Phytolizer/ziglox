@@ -1,6 +1,8 @@
 const std = @import("std");
 const g = @import("global.zig");
 const vm_mod = @import("vm.zig");
+const chunk_mod = @import("chunk.zig");
+const Chunk = chunk_mod.Chunk;
 
 const vm = &vm_mod.vm;
 
@@ -9,11 +11,17 @@ pub const Obj = struct {
     next: ?*Obj = null,
 
     pub const Kind = enum {
+        function,
         string,
     };
 
     pub fn deinit(self: *@This()) void {
         switch (self.kind) {
+            .function => {
+                const function = @fieldParentPtr(ObjFunction, "obj", self);
+                function.chunk.deinit();
+                g.allocator.destroy(function);
+            },
             .string => {
                 const string = @fieldParentPtr(ObjString, "obj", self);
                 g.allocator.free(string.text);
@@ -76,6 +84,13 @@ pub fn takeString(text: []u8) !*ObjString {
     return try allocateString(text, hash);
 }
 
+pub const ObjFunction = struct {
+    obj: Obj,
+    arity: usize,
+    chunk: Chunk,
+    name: ?*ObjString,
+};
+
 fn allocateObj(comptime T: type, kind: Obj.Kind) !*T {
     const obj = try g.allocator.create(T);
     obj.obj = .{
@@ -92,4 +107,12 @@ fn allocateString(text: []u8, hash: u32) !*ObjString {
     obj.hash = hash;
     _ = try vm.strings.set(obj, .nil);
     return obj;
+}
+
+pub fn newFunction() !*ObjFunction {
+    const function = try allocateObj(ObjFunction, .function);
+    function.arity = 0;
+    function.name = null;
+    function.chunk = Chunk.init();
+    return function;
 }
