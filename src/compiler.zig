@@ -201,7 +201,7 @@ fn resolveLocal(compiler: *Compiler, name: Token) ?usize {
             if (local.depth == null) {
                 errorAtPrevious("Can't read local variable in its own initializer.");
             }
-            return i;
+            return i - 1;
         }
     }
     return null;
@@ -538,6 +538,8 @@ fn synchronize() void {
 fn statement() ParseError!void {
     if (match(.print)) {
         try printStatement();
+    } else if (match(.@"for")) {
+        try forStatement();
     } else if (match(.@"if")) {
         try ifStatement();
     } else if (match(.@"while")) {
@@ -576,6 +578,48 @@ fn expressionStatement() !void {
     try expression();
     consume(.semicolon, "Expect ';' after expression.");
     try emitOp(.pop);
+}
+
+fn forStatement() !void {
+    beginScope();
+    consume(.left_paren, "Expect '(' after 'for'.");
+    if (match(.semicolon)) {
+        // no initializer
+    } else if (match(.@"var")) {
+        try varDeclaration();
+    } else {
+        try expressionStatement();
+    }
+
+    var loop_start = currentChunk().code.len;
+    var exit_jump: ?usize = null;
+    if (!match(.semicolon)) {
+        try expression();
+        consume(.semicolon, "Expect ';' after loop condition.");
+
+        exit_jump = try emitJump(.jump_if_false);
+        try emitOp(.pop);
+    }
+
+    if (!match(.right_paren)) {
+        const body_jump = try emitJump(.jump);
+        const increment_start = currentChunk().code.len;
+        try expression();
+        try emitOp(.pop);
+        consume(.right_paren, "Expect ')' after for clauses.");
+
+        try emitLoop(loop_start);
+        loop_start = increment_start;
+        patchJump(body_jump);
+    }
+
+    try statement();
+    try emitLoop(loop_start);
+    if (exit_jump) |ej| {
+        patchJump(ej);
+        try emitOp(.pop);
+    }
+    try endScope();
 }
 
 fn ifStatement() !void {

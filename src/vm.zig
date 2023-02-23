@@ -192,6 +192,7 @@ fn run() !void {
             }
             try bww.writeByte('\n');
             _ = try debug.disassembleInstruction(vm.chunk.?, vm.ip, bww);
+            try bw.flush();
         }
         const instruction = Reader.readByte();
         switch (@intToEnum(OpCode, instruction)) {
@@ -270,7 +271,6 @@ fn run() !void {
             .print => {
                 try value_mod.printValue(bww, pop());
                 try bww.writeByte('\n');
-                break;
             },
             .jump => {
                 const offset = Reader.readShort();
