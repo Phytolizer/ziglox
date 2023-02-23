@@ -2,6 +2,7 @@ const std = @import("std");
 const scanner = @import("scanner.zig");
 const chunk_mod = @import("chunk.zig");
 const Chunk = chunk_mod.Chunk;
+const OpCode = chunk_mod.OpCode;
 const Token = scanner.Token;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
@@ -86,7 +87,7 @@ fn emitByte(byte: u8) !void {
     try currentChunk().write(byte, parser.previous.line);
 }
 
-fn emitOp(op: chunk_mod.OpCode) !void {
+fn emitOp(op: OpCode) !void {
     try emitByte(@enumToInt(op));
 }
 
@@ -96,7 +97,7 @@ fn emitBytes(bytes: []const u8) !void {
     }
 }
 
-fn emitOps(ops: []const chunk_mod.OpCode) !void {
+fn emitOps(ops: []const OpCode) !void {
     for (ops) |op| {
         try emitOp(op);
     }
@@ -145,17 +146,7 @@ fn varDeclaration() !void {
 }
 
 fn defineVariable(global: usize) !void {
-    if (global <= std.math.maxInt(u8)) {
-        try emitOp(.define_global);
-        try emitByte(@intCast(u8, global));
-    } else if (global <= std.math.maxInt(u24)) {
-        try emitOp(.define_global_long);
-        try emitBytes(&.{
-            @truncate(u8, global >> 16),
-            @truncate(u8, global >> 8),
-            @truncate(u8, global),
-        });
-    } else unreachable;
+    try emitDynamic(.define_global, .define_global_long, global);
 }
 
 fn number() ParseError!void {
@@ -303,19 +294,23 @@ fn string() ParseError!void {
     )));
 }
 
-fn namedVariable(name: Token) ParseError!void {
-    const arg = try identifierConstant(name);
-    if (arg <= std.math.maxInt(u8)) {
-        try emitOp(.get_global);
-        try emitByte(@intCast(u8, arg));
-    } else if (arg <= std.math.maxInt(u24)) {
-        try emitOp(.get_global_long);
+fn emitDynamic(short_op: OpCode, long_op: OpCode, value: usize) !void {
+    if (value <= std.math.maxInt(u8)) {
+        try emitOp(short_op);
+        try emitByte(@intCast(u8, value));
+    } else if (value <= std.math.maxInt(u24)) {
+        try emitOp(long_op);
         try emitBytes(&.{
-            @truncate(u8, arg >> 16),
-            @truncate(u8, arg >> 8),
-            @truncate(u8, arg),
+            @truncate(u8, value >> 16),
+            @truncate(u8, value >> 8),
+            @truncate(u8, value),
         });
     } else unreachable;
+}
+
+fn namedVariable(name: Token) ParseError!void {
+    const arg = try identifierConstant(name);
+    try emitDynamic(.get_global, .get_global_long, arg);
 }
 
 fn variable() ParseError!void {
