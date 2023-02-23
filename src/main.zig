@@ -57,7 +57,7 @@ fn run() !void {
     defer _ = gpa.detectLeaks();
     g.allocator = gpa.allocator();
 
-    vm.init();
+    try vm.init();
     defer vm.deinit();
 
     const args = try std.process.argsAlloc(g.allocator);

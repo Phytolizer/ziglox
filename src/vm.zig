@@ -4,14 +4,14 @@ const Chunk = chunk_mod.Chunk;
 const OpCode = chunk_mod.OpCode;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const Obj = value_mod.Obj;
+const ObjString = value_mod.ObjString;
+const ObjFunction = value_mod.ObjFunction;
+const NativeFn = value_mod.NativeFn;
 const debug = @import("debug.zig");
 const compiler = @import("compiler.zig");
 const UINT8_COUNT = compiler.UINT8_COUNT;
 const g = @import("global.zig");
-const obj_mod = @import("obj.zig");
-const Obj = obj_mod.Obj;
-const ObjString = obj_mod.ObjString;
-const ObjFunction = obj_mod.ObjFunction;
 const table_mod = @import("table.zig");
 const Table = table_mod.Table;
 
@@ -38,8 +38,14 @@ const VM = struct {
 
 pub var vm = VM{};
 
-pub fn init() void {
+fn clockNative(_: []const Value) Value {
+    const now = std.time.timestamp();
+    return .{ .number = @intToFloat(f64, now) };
+}
+
+pub fn init() !void {
     resetStack();
+    try defineNative("clock", &clockNative);
 }
 
 fn resetStack() void {
@@ -105,6 +111,13 @@ fn callValue(callee: Value, arg_count: usize) !void {
                 try call(callee.asFunction(), arg_count);
                 return;
             },
+            .native => {
+                const native = callee.asNative();
+                const result = native(vm.stack[vm.stack_top - arg_count .. vm.stack_top]);
+                vm.stack_top -= arg_count + 1;
+                push(result);
+                return;
+            },
             else => {},
         }
     }
@@ -135,6 +148,14 @@ fn runtimeError(comptime fmt: []const u8, args: anytype) void {
     resetStack();
 }
 
+fn defineNative(name: []const u8, function: *const NativeFn) !void {
+    push(Value.initObj(try value_mod.copyString(name)));
+    push(Value.initObj(try value_mod.newNative(function)));
+    _ = try vm.globals.set(vm.stack[0].asString(), vm.stack[1]);
+    _ = pop();
+    _ = pop();
+}
+
 const InterpretError = error{
     Compile,
     Runtime,
@@ -144,7 +165,7 @@ const InterpretError = error{
 pub fn interpret(source: []const u8) InterpretError!void {
     const function = try compiler.compile(source);
 
-    push(.{ .obj = obj_mod.castObj(function) });
+    push(Value.initObj(function));
     try call(function, 0);
 
     try run();
@@ -378,6 +399,6 @@ fn concatenate() !void {
 
     const chars = try std.mem.concat(g.allocator, u8, &.{ a, b });
 
-    const result = try obj_mod.takeString(chars);
+    const result = try value_mod.takeString(chars);
     push(Value.initObj(result));
 }

@@ -1,8 +1,7 @@
 const std = @import("std");
-const obj_mod = @import("obj.zig");
-const ObjString = obj_mod.ObjString;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const ObjString = value_mod.ObjString;
 const g = @import("global.zig");
 const memory = @import("memory.zig");
 

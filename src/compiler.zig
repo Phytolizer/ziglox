@@ -6,9 +6,8 @@ const OpCode = chunk_mod.OpCode;
 const Token = scanner.Token;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const ObjFunction = value_mod.ObjFunction;
 const debug = @import("debug.zig");
-const obj = @import("obj.zig");
-const ObjFunction = obj.ObjFunction;
 
 pub fn compile(source: []const u8) !*ObjFunction {
     scanner.init(source);
@@ -147,10 +146,10 @@ fn patchJump(offset: usize) void {
 fn initCompiler(compiler: *Compiler, @"type": FunctionType) !void {
     compiler.enclosing = current;
     compiler.type = @"type";
-    compiler.function = try obj.newFunction();
+    compiler.function = try value_mod.newFunction();
     current = compiler;
     if (@"type" != .script) {
-        current.?.function.name = try obj.copyString(parser.previous.text);
+        current.?.function.name = try value_mod.copyString(parser.previous.text);
     }
 
     const local = &current.?.locals[current.?.local_count];
@@ -224,7 +223,7 @@ fn parseFunction(@"type": FunctionType) ParseError!void {
     try block();
 
     const function = try endCompiler();
-    try emitConstant(.{ .obj = obj.castObj(function) });
+    try emitConstant(Value.initObj(function));
 }
 
 fn funDeclaration() ParseError!void {
@@ -235,9 +234,9 @@ fn funDeclaration() ParseError!void {
 }
 
 fn identifierConstant(name: Token) !usize {
-    return try currentChunk().addConstant(.{
-        .obj = obj.castObj(try obj.copyString(name.text)),
-    });
+    return try currentChunk().addConstant(
+        Value.initObj(try value_mod.copyString(name.text)),
+    );
 }
 
 fn identifiersEqual(a: Token, b: Token) bool {
@@ -534,7 +533,7 @@ fn literal(_: bool) ParseError!void {
 }
 
 fn string(_: bool) ParseError!void {
-    try emitConstant(Value.initObj(try obj.copyString(
+    try emitConstant(Value.initObj(try value_mod.copyString(
         parser.previous.text[1 .. parser.previous.text.len - 1],
     )));
 }
