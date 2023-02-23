@@ -257,9 +257,29 @@ fn defineVariable(global: usize) !void {
     try emitDynamic(.define_global, .define_global_long, global);
 }
 
+fn @"and"(_: bool) ParseError!void {
+    const end_jump = try emitJump(.jump_if_false);
+
+    try emitOp(.pop);
+    try parsePrecedence(.@"and");
+
+    patchJump(end_jump);
+}
+
 fn number(_: bool) ParseError!void {
     const value = std.fmt.parseFloat(f64, parser.previous.text) catch unreachable;
     try emitConstant(.{ .number = value });
+}
+
+fn @"or"(_: bool) ParseError!void {
+    const else_jump = try emitJump(.jump_if_false);
+    const end_jump = try emitJump(.jump);
+
+    patchJump(else_jump);
+    try emitOp(.pop);
+
+    try parsePrecedence(.@"or");
+    patchJump(end_jump);
 }
 
 fn grouping(_: bool) ParseError!void {
@@ -360,7 +380,7 @@ const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .identifier = .{ .prefix = variable },
     .string = .{ .prefix = string },
     .number = .{ .prefix = number },
-    .@"and" = .{},
+    .@"and" = .{ .infix = @"and" },
     .class = .{},
     .@"else" = .{},
     .false = .{ .prefix = literal },
@@ -368,7 +388,7 @@ const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .fun = .{},
     .@"if" = .{},
     .nil = .{ .prefix = literal },
-    .@"or" = .{},
+    .@"or" = .{ .infix = @"or" },
     .print = .{},
     .@"return" = .{},
     .super = .{},
