@@ -310,7 +310,12 @@ fn emitDynamic(short_op: OpCode, long_op: OpCode, value: usize) !void {
 
 fn namedVariable(name: Token) ParseError!void {
     const arg = try identifierConstant(name);
-    try emitDynamic(.get_global, .get_global_long, arg);
+    if (match(.equal)) {
+        try expression();
+        try emitDynamic(.set_global, .set_global_long, arg);
+    } else {
+        try emitDynamic(.get_global, .get_global_long, arg);
+    }
 }
 
 fn variable() ParseError!void {

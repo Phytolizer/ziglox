@@ -148,6 +148,16 @@ fn run() !void {
             }
         }
     }.f;
+    const setGlobal = struct {
+        fn f(comptime read_fn: fn () *ObjString) !void {
+            const name = read_fn();
+            if (try vm.globals.set(name, peek(0))) {
+                _ = vm.globals.delete(name);
+                runtimeError("Undefined variable '{s}'.", .{name.text});
+                return error.Runtime;
+            }
+        }
+    }.f;
 
     var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
     const bww = bw.writer();
@@ -182,6 +192,8 @@ fn run() !void {
             .get_global_long => try getGlobal(Reader.readStringLong),
             .define_global => try defineGlobal(Reader.readString),
             .define_global_long => try defineGlobal(Reader.readStringLong),
+            .set_global => try setGlobal(Reader.readString),
+            .set_global_long => try setGlobal(Reader.readStringLong),
             .equal => {
                 const b = pop();
                 const a = pop();
