@@ -28,8 +28,6 @@ const VM = struct {
     frames: [FRAMES_MAX]CallFrame = undefined,
     frame_count: usize = 0,
 
-    chunk: ?*Chunk = null,
-    ip: usize = 0,
     stack: [STACK_MAX]Value = undefined,
     stack_top: usize = 0,
     objects: ?*Obj = null,
@@ -45,6 +43,7 @@ pub fn init() void {
 
 fn resetStack() void {
     vm.stack_top = 0;
+    vm.frame_count = 0;
 }
 
 pub fn deinit() void {
@@ -76,6 +75,41 @@ fn peek(distance: usize) Value {
     return vm.stack[vm.stack_top - 1 - distance];
 }
 
+fn call(function: *ObjFunction, arg_count: usize) !void {
+    if (arg_count != function.arity) {
+        runtimeError(
+            "Expected {d} arguments but got {d}.",
+            .{ function.arity, arg_count },
+        );
+        return error.Runtime;
+    }
+
+    if (vm.frame_count == FRAMES_MAX) {
+        runtimeError("Stack overflow.", .{});
+        return error.Runtime;
+    }
+
+    const frame = &vm.frames[vm.frame_count];
+    vm.frame_count += 1;
+    frame.function = function;
+    frame.ip = 0;
+    frame.slots = vm.stack[vm.stack_top - arg_count - 1 .. vm.stack.len];
+}
+
+fn callValue(callee: Value, arg_count: usize) !void {
+    if (callee.isObj()) {
+        switch (callee.objKind()) {
+            .function => {
+                try call(callee.asFunction(), arg_count);
+                return;
+            },
+            else => {},
+        }
+    }
+    runtimeError("Can only call functions and classes.", .{});
+    return error.Runtime;
+}
+
 fn isFalsey(v: Value) bool {
     return v.isNil() or (v.isBoolean() and !v.boolean);
 }
@@ -83,10 +117,20 @@ fn isFalsey(v: Value) bool {
 fn runtimeError(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(fmt ++ "\n", args);
 
-    const frame = &vm.frames[vm.frame_count - 1];
-    const instruction = frame.ip - 1;
-    const line = frame.function.chunk.getLine(instruction);
-    std.debug.print("[line {d}] in script\n", .{line});
+    var i = vm.frame_count;
+    while (i > 0) : (i -= 1) {
+        const frame = &vm.frames[i - 1];
+        const function = frame.function;
+        const instruction = frame.ip;
+        const line = function.chunk.getLine(instruction);
+        std.debug.print("[line {d}] in ", .{line});
+        if (function.name) |name| {
+            std.debug.print("{s}()\n", .{name.text});
+        } else {
+            std.debug.print("script\n", .{});
+        }
+    }
+    resetStack();
 }
 
 const InterpretError = error{
@@ -99,23 +143,19 @@ pub fn interpret(source: []const u8) InterpretError!void {
     const function = try compiler.compile(source);
 
     push(.{ .obj = obj_mod.castObj(function) });
-    const frame = &vm.frames[vm.frame_count];
-    vm.frame_count += 1;
-    frame.function = function;
-    frame.ip = 0;
-    frame.slots = &vm.stack;
+    try call(function, 0);
 
     try run();
 }
 
 fn run() !void {
-    const frame = &vm.frames[vm.frame_count - 1];
+    var frame = &vm.frames[vm.frame_count - 1];
     const Reader = struct {
-        frame: *CallFrame,
+        frame: **CallFrame,
 
         fn readByte(self: @This()) u8 {
-            const byte = self.frame.function.chunk.code[self.frame.ip];
-            self.frame.ip += 1;
+            const byte = self.frame.*.function.chunk.code[self.frame.*.ip];
+            self.frame.*.ip += 1;
             return byte;
         }
         fn readShort(self: @This()) u16 {
@@ -132,12 +172,12 @@ fn run() !void {
             return (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
         }
         fn readConstant(self: @This()) Value {
-            const constant = self.frame.function.chunk.constants.values[self.readByte()];
-            return constant;
+            const constant = self.readByte();
+            return self.frame.*.function.chunk.constants.values[constant];
         }
         fn readConstantLong(self: @This()) Value {
             const constant = self.read3Bytes();
-            return self.frame.function.chunk.constants.values[constant];
+            return self.frame.*.function.chunk.constants.values[constant];
         }
         fn readString(self: @This()) *ObjString {
             return self.readConstant().asString();
@@ -146,7 +186,7 @@ fn run() !void {
             return self.readConstantLong().asString();
         }
     };
-    const reader = Reader{ .frame = frame };
+    const reader = Reader{ .frame = &frame };
     const binaryOp = struct {
         fn f(comptime value_kind: Value.Kind, comptime T: type, comptime op: fn (f64, f64) T) !void {
             if (!peek(0).isNumber() or !peek(1).isNumber()) {
@@ -191,11 +231,11 @@ fn run() !void {
         }
         fn getLocal(self: @This(), comptime long: bool) !void {
             const slot = self.readNum(long);
-            push(self.reader.frame.slots[slot]);
+            push(self.reader.frame.*.slots[slot]);
         }
         fn setLocal(self: @This(), comptime long: bool) !void {
             const slot = self.readNum(long);
-            self.reader.frame.slots[slot] = peek(0);
+            self.reader.frame.*.slots[slot] = peek(0);
         }
     }{ .reader = reader };
 
@@ -304,6 +344,11 @@ fn run() !void {
             .loop => {
                 const offset = reader.readShort();
                 frame.ip -= offset;
+            },
+            .call => {
+                const arg_count = reader.readByte();
+                try callValue(peek(arg_count), arg_count);
+                frame = &vm.frames[vm.frame_count - 1];
             },
             .@"return" => {
                 break;

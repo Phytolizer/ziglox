@@ -3,8 +3,8 @@ const chunk = @import("chunk.zig");
 const Chunk = chunk.Chunk;
 const value = @import("value.zig");
 
-pub const TRACE_EXECUTION = false;
-pub const PRINT_CODE = false;
+pub const TRACE_EXECUTION = true;
+pub const PRINT_CODE = true;
 
 pub fn disassembleChunk(c: *const Chunk, name: []const u8) !void {
     var buf = std.io.bufferedWriter(std.io.getStdOut().writer());
@@ -41,6 +41,7 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
         => return try constantLongInstruction(instruction, c, offset, writer),
         .get_local,
         .set_local,
+        .call,
         => return try numInstruction(instruction, c, offset, writer),
         .get_local_long,
         .set_local_long,

@@ -159,7 +159,7 @@ fn initCompiler(compiler: *Compiler, @"type": FunctionType) !void {
     local.name.text = "";
 }
 
-fn endCompiler() !*ObjFunction {
+fn endCompiler() ParseError!*ObjFunction {
     try emitReturn();
     const function = current.?.function;
     if (debug.PRINT_CODE and !parser.had_error) {
@@ -201,7 +201,7 @@ fn block() ParseError!void {
     consume(.right_brace, "Expect '}' after block.");
 }
 
-fn parseFunction(@"type": FunctionType) !void {
+fn parseFunction(@"type": FunctionType) ParseError!void {
     var compiler = Compiler{};
     try initCompiler(&compiler, @"type");
     beginScope();
@@ -227,7 +227,7 @@ fn parseFunction(@"type": FunctionType) !void {
     try emitConstant(.{ .obj = obj.castObj(function) });
 }
 
-fn funDeclaration() !void {
+fn funDeclaration() ParseError!void {
     const global = try parseVariable("Expect function name.");
     markInitialized();
     try parseFunction(.function);
@@ -324,6 +324,23 @@ fn defineVariable(global: usize) !void {
     try emitDynamic(.define_global, .define_global_long, global);
 }
 
+fn argumentList() !u8 {
+    var arg_count: u8 = 0;
+    if (!check(.right_paren)) {
+        while (true) {
+            try expression();
+            if (arg_count == 255) {
+                errorAtPrevious("Can't have more than 255 arguments.");
+            }
+            arg_count += 1;
+
+            if (!match(.comma)) break;
+        }
+    }
+    consume(.right_paren, "Expect ')' after arguments.");
+    return arg_count;
+}
+
 fn @"and"(_: bool) ParseError!void {
     const end_jump = try emitJump(.jump_if_false);
 
@@ -387,6 +404,12 @@ fn binary(_: bool) ParseError!void {
     }
 }
 
+fn call(_: bool) ParseError!void {
+    const arg_count = try argumentList();
+    try emitOp(.call);
+    try emitByte(arg_count);
+}
+
 const Precedence = enum(usize) {
     none,
     assignment,
@@ -429,12 +452,12 @@ const Compiler = struct {
     scope_depth: usize = 0,
 };
 
-const ParseError = std.mem.Allocator.Error;
+const ParseError = std.mem.Allocator.Error || std.fs.File.WriteError;
 
 const ParseFn = *const fn (can_assign: bool) ParseError!void;
 
 const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
-    .left_paren = .{ .prefix = grouping },
+    .left_paren = .{ .prefix = grouping, .infix = call, .precedence = .call },
     .right_paren = .{},
     .left_brace = .{},
     .right_brace = .{},
@@ -563,7 +586,7 @@ fn variable(can_assign: bool) ParseError!void {
     try namedVariable(parser.previous, can_assign);
 }
 
-fn declaration() !void {
+fn declaration() ParseError!void {
     if (match(.fun)) {
         try funDeclaration();
     } else if (match(.@"var")) {
