@@ -8,6 +8,7 @@ const Obj = value_mod.Obj;
 const ObjString = value_mod.ObjString;
 const ObjFunction = value_mod.ObjFunction;
 const ObjClosure = value_mod.ObjClosure;
+const ObjUpvalue = value_mod.ObjUpvalue;
 const NativeFn = value_mod.NativeFn;
 const debug = @import("debug.zig");
 const compiler = @import("compiler.zig");
@@ -32,9 +33,10 @@ const VM = struct {
 
     stack: [STACK_MAX]Value = undefined,
     stack_top: usize = 0,
-    objects: ?*Obj = null,
     globals: Table = .{},
     strings: Table = .{},
+    open_upvalues: ?*ObjUpvalue = null,
+    objects: ?*Obj = null,
 };
 
 pub var vm = VM{};
@@ -52,6 +54,7 @@ pub fn init() !void {
 fn resetStack() void {
     vm.stack_top = 0;
     vm.frame_count = 0;
+    vm.open_upvalues = null;
 }
 
 pub fn deinit() void {
@@ -124,6 +127,42 @@ fn callValue(callee: Value, arg_count: usize) !void {
     }
     runtimeError("Can only call functions and classes.", .{});
     return error.Runtime;
+}
+
+fn captureUpvalue(local: *Value) !*ObjUpvalue {
+    var prev_upvalue: ?*ObjUpvalue = null;
+    var upvalue = vm.open_upvalues;
+    while (upvalue) |uv| {
+        if (@ptrToInt(uv.location) <= @ptrToInt(local)) break;
+        prev_upvalue = uv;
+        upvalue = uv.next;
+    }
+
+    if (upvalue) |uv| if (uv.location == local) {
+        return uv;
+    };
+
+    const created_upvalue = try value_mod.newUpvalue(local);
+    created_upvalue.next = upvalue;
+
+    if (prev_upvalue) |puv| {
+        puv.next = created_upvalue;
+    } else {
+        vm.open_upvalues = created_upvalue;
+    }
+
+    return created_upvalue;
+}
+
+fn closeUpvalues(last: *Value) void {
+    while (vm.open_upvalues) |ouv| {
+        if (@ptrToInt(ouv.location) < @ptrToInt(last)) break;
+
+        const upvalue = ouv;
+        upvalue.closed = upvalue.location.*;
+        upvalue.location = &upvalue.closed;
+        vm.open_upvalues = upvalue.next;
+    }
 }
 
 fn isFalsey(v: Value) bool {
@@ -254,6 +293,15 @@ fn run() !void {
             const function = readFn(self.reader).asFunction();
             const closure = try value_mod.newClosure(function);
             push(Value.initObj(closure));
+            for (closure.upvalues) |*upvalue| {
+                const is_local = self.reader.readByte();
+                const index = self.reader.readByte();
+                if (is_local != 0) {
+                    upvalue.* = try captureUpvalue(&self.reader.frame.*.slots[index]);
+                } else {
+                    upvalue.* = self.reader.frame.*.closure.upvalues[index];
+                }
+            }
         }
         fn readNum(self: @This(), comptime long: bool) usize {
             return if (long)
@@ -315,6 +363,14 @@ fn run() !void {
             .set_local_long => try lengthOps.setLocal(true),
             .set_global => try lengthOps.setGlobal(Reader.readString),
             .set_global_long => try lengthOps.setGlobal(Reader.readStringLong),
+            .get_upvalue => {
+                const slot = reader.readByte();
+                push(frame.closure.upvalues[slot].?.location.*);
+            },
+            .set_upvalue => {
+                const slot = reader.readByte();
+                frame.closure.upvalues[slot].?.location.* = peek(0);
+            },
             .equal => {
                 const b = pop();
                 const a = pop();
@@ -388,8 +444,13 @@ fn run() !void {
             },
             .closure => try lengthOps.doClosure(Reader.readConstant),
             .closure_long => try lengthOps.doClosure(Reader.readConstantLong),
+            .close_upvalue => {
+                closeUpvalues(&vm.stack[vm.stack_top - 1]);
+                _ = pop();
+            },
             .@"return" => {
                 const result = pop();
+                closeUpvalues(@ptrCast(*Value, frame.slots.ptr));
                 vm.frame_count -= 1;
                 if (vm.frame_count == 0) {
                     _ = pop();

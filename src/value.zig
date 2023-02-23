@@ -16,12 +16,14 @@ pub const Obj = struct {
         function,
         native,
         string,
+        upvalue,
     };
 
     pub fn deinit(self: *@This()) void {
         switch (self.kind) {
             .closure => {
                 const closure = @fieldParentPtr(ObjClosure, "obj", self);
+                g.allocator.free(closure.upvalues);
                 g.allocator.destroy(closure);
             },
             .function => {
@@ -37,6 +39,10 @@ pub const Obj = struct {
                 const string = @fieldParentPtr(ObjString, "obj", self);
                 g.allocator.free(string.text);
                 g.allocator.destroy(string);
+            },
+            .upvalue => {
+                const upvalue = @fieldParentPtr(ObjUpvalue, "obj", self);
+                g.allocator.destroy(upvalue);
             },
         }
     }
@@ -98,6 +104,7 @@ pub fn takeString(text: []u8) !*ObjString {
 pub const ObjFunction = struct {
     obj: Obj,
     arity: usize,
+    upvalue_count: usize,
     chunk: Chunk,
     name: ?*ObjString,
 };
@@ -123,6 +130,7 @@ fn allocateString(text: []u8, hash: u32) !*ObjString {
 pub fn newFunction() !*ObjFunction {
     const function = try allocateObj(ObjFunction, .function);
     function.arity = 0;
+    function.upvalue_count = 0;
     function.name = null;
     function.chunk = Chunk.init();
     return function;
@@ -144,12 +152,31 @@ pub fn newNative(function: *const NativeFn) !*ObjNative {
 pub const ObjClosure = struct {
     obj: Obj,
     function: *ObjFunction,
+    upvalues: []?*ObjUpvalue,
 };
 
 pub fn newClosure(function: *ObjFunction) !*ObjClosure {
+    const upvalues = try g.allocator.alloc(?*ObjUpvalue, function.upvalue_count);
+    std.mem.set(?*ObjUpvalue, upvalues, null);
     const closure = try allocateObj(ObjClosure, .closure);
     closure.function = function;
+    closure.upvalues = upvalues;
     return closure;
+}
+
+pub const ObjUpvalue = struct {
+    obj: Obj,
+    location: *Value,
+    closed: Value,
+    next: ?*@This(),
+};
+
+pub fn newUpvalue(slot: *Value) !*ObjUpvalue {
+    const upvalue = try allocateObj(ObjUpvalue, .upvalue);
+    upvalue.closed = .nil;
+    upvalue.location = slot;
+    upvalue.next = null;
+    return upvalue;
 }
 
 pub const Value = union(Kind) {
@@ -271,6 +298,9 @@ fn printObj(writer: anytype, v: Value) !void {
         },
         .string => {
             try writer.print("{s}", .{v.asCstring()});
+        },
+        .upvalue => {
+            try writer.writeAll("upvalue");
         },
     }
 }

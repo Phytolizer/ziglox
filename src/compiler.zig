@@ -155,6 +155,7 @@ fn initCompiler(compiler: *Compiler, @"type": FunctionType) !void {
     const local = &current.?.locals[current.?.local_count];
     current.?.local_count += 1;
     local.depth = 0;
+    local.is_captured = false;
     local.name.text = "";
 }
 
@@ -183,7 +184,11 @@ fn endScope() !void {
         (current.?.locals[current.?.local_count - 1].depth orelse 0) >
         current.?.scope_depth)
     {
-        try emitOp(.pop);
+        if (current.?.locals[current.?.local_count - 1].is_captured) {
+            try emitOp(.close_upvalue);
+        } else {
+            try emitOp(.pop);
+        }
         current.?.local_count -= 1;
     }
 }
@@ -225,6 +230,13 @@ fn parseFunction(@"type": FunctionType) ParseError!void {
     const function = try endCompiler();
     const constant = try currentChunk().addConstant(Value.initObj(function));
     try emitDynamic(.closure, .closure_long, constant);
+
+    for (0..function.upvalue_count) |i| {
+        try emitBytes(&.{
+            @boolToInt(compiler.upvalues[i].is_local),
+            compiler.upvalues[i].index,
+        });
+    }
 }
 
 fn funDeclaration() ParseError!void {
@@ -258,6 +270,42 @@ fn resolveLocal(compiler: *Compiler, name: Token) ?usize {
     return null;
 }
 
+fn addUpvalue(compiler: *Compiler, index: u8, is_local: bool) u8 {
+    const upvalue_count = compiler.function.upvalue_count;
+
+    for (0..upvalue_count) |i| {
+        const upvalue = &compiler.upvalues[i];
+        if (upvalue.index == index and upvalue.is_local == is_local) {
+            return @intCast(u8, i);
+        }
+    }
+
+    if (upvalue_count == UINT8_COUNT) {
+        errorAtPrevious("Too many closure variables in function.");
+        return 0;
+    }
+
+    compiler.upvalues[upvalue_count].is_local = is_local;
+    compiler.upvalues[upvalue_count].index = index;
+    compiler.function.upvalue_count += 1;
+    return @intCast(u8, upvalue_count);
+}
+
+fn resolveUpvalue(compiler: *Compiler, name: Token) ?u8 {
+    if (compiler.enclosing) |enclosing| {
+        if (resolveLocal(enclosing, name)) |local| {
+            enclosing.locals[local].is_captured = true;
+            return addUpvalue(compiler, @intCast(u8, local), true);
+        }
+
+        if (resolveUpvalue(enclosing, name)) |upvalue| {
+            return addUpvalue(compiler, upvalue, false);
+        }
+    }
+
+    return null;
+}
+
 fn addLocal(name: Token) void {
     if (current.?.local_count == UINT8_COUNT) {
         errorAtPrevious("Too many local variables in function.");
@@ -268,6 +316,7 @@ fn addLocal(name: Token) void {
     current.?.local_count += 1;
     local.name = name;
     local.depth = null;
+    local.is_captured = false;
 }
 
 fn declareVariable() void {
@@ -435,11 +484,17 @@ pub const UINT8_COUNT = std.math.maxInt(u8) + 1;
 const Local = struct {
     name: Token,
     depth: ?usize,
+    is_captured: bool,
 };
 
 const FunctionType = enum {
     function,
     script,
+};
+
+const Upvalue = struct {
+    index: u8,
+    is_local: bool,
 };
 
 const Compiler = struct {
@@ -449,6 +504,7 @@ const Compiler = struct {
 
     locals: [UINT8_COUNT]Local = undefined,
     local_count: usize = 0,
+    upvalues: [UINT8_COUNT]Upvalue = undefined,
     scope_depth: usize = 0,
 };
 
@@ -567,11 +623,17 @@ fn namedVariable(name: Token, can_assign: bool) ParseError!void {
         .set_long = .set_local_long,
     };
     const arg = resolveLocal(current.?, name) orelse blk: {
-        ops.get = .get_global;
-        ops.set = .set_global;
-        ops.get_long = .get_global_long;
-        ops.set_long = .set_global_long;
-        break :blk try identifierConstant(name);
+        if (resolveUpvalue(current.?, name)) |upvalue| {
+            ops.get = .get_upvalue;
+            ops.set = .set_upvalue;
+            break :blk upvalue;
+        } else {
+            ops.get = .get_global;
+            ops.set = .set_global;
+            ops.get_long = .get_global_long;
+            ops.set_long = .set_global_long;
+            break :blk try identifierConstant(name);
+        }
     };
 
     if (can_assign and match(.equal)) {

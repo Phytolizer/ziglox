@@ -33,17 +33,40 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
         .get_global,
         .define_global,
         .set_global,
-        .closure,
         => return try constantInstruction(instruction, c, offset, writer),
         .constant_long,
         .get_global_long,
         .define_global_long,
         .set_global_long,
-        .closure_long,
         => return try constantLongInstruction(instruction, c, offset, writer),
+        .closure => {
+            var ofs = offset;
+            ofs += 1;
+            const constant = c.code[ofs];
+            ofs += 1;
+            try writer.print("{s:<16} {d:>4} ", .{ chunk.OpCode.names[instruction], constant });
+            try value.printValue(writer, c.constants.values[constant]);
+            try writer.writeAll("\n");
+
+            const function = c.constants.values[constant].asFunction();
+            for (0..function.upvalue_count) |_| {
+                const is_local = c.code[ofs];
+                ofs += 1;
+                const index = c.code[ofs];
+                ofs += 1;
+                try writer.print(
+                    "{d:0>4}      |                     {s} {d}\n",
+                    .{ ofs - 2, if (is_local) "local" else "upvalue", index },
+                );
+            }
+
+            return ofs;
+        },
         .get_local,
         .set_local,
         .call,
+        .get_upvalue,
+        .set_upvalue,
         => return try numInstruction(instruction, c, offset, writer),
         .get_local_long,
         .set_local_long,
@@ -51,8 +74,7 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
         .jump,
         .jump_if_false,
         => return try jumpInstruction(instruction, 1, c, offset, writer),
-        .loop,
-        => return try jumpInstruction(instruction, -1, c, offset, writer),
+        .loop => return try jumpInstruction(instruction, -1, c, offset, writer),
         .nil,
         .true,
         .false,
@@ -67,6 +89,7 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
         .not,
         .negate,
         .print,
+        .close_upvalue,
         .@"return",
         => return try simpleInstruction(instruction, offset, writer),
         _ => {

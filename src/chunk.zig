@@ -20,6 +20,8 @@ pub const OpCode = enum(u8) {
     set_local_long,
     set_global,
     set_global_long,
+    get_upvalue,
+    set_upvalue,
     equal,
     greater,
     less,
@@ -36,6 +38,7 @@ pub const OpCode = enum(u8) {
     call,
     closure,
     closure_long,
+    close_upvalue,
     @"return",
     _,
 
