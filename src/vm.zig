@@ -130,6 +130,17 @@ fn run() !void {
             push(@unionInit(Value, @tagName(value_kind), op(a, b)));
         }
     }.f;
+    const getGlobal = struct {
+        fn f(comptime read_fn: fn () *ObjString) !void {
+            const name = read_fn();
+            if (vm.globals.get(name)) |value| {
+                push(value);
+            } else {
+                runtimeError("Undefined variable '{s}'.", .{name.text});
+                return error.Runtime;
+            }
+        }
+    }.f;
 
     var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
     const bww = bw.writer();
@@ -160,24 +171,8 @@ fn run() !void {
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
             .pop => _ = pop(),
-            .get_global => {
-                const name = Reader.readString();
-                if (vm.globals.get(name)) |value| {
-                    push(value);
-                } else {
-                    runtimeError("Undefined variable '{s}'.", .{name.text});
-                    return error.Runtime;
-                }
-            },
-            .get_global_long => {
-                const name = Reader.readStringLong();
-                if (vm.globals.get(name)) |value| {
-                    push(value);
-                } else {
-                    runtimeError("Undefined variable '{s}'.", .{name.text});
-                    return error.Runtime;
-                }
-            },
+            .get_global => try getGlobal(Reader.readString),
+            .get_global_long => try getGlobal(Reader.readStringLong),
             .define_global => {
                 const name = Reader.readString();
                 _ = try vm.globals.set(name, peek(0));
