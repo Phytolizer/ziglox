@@ -280,6 +280,10 @@ fn run() !void {
                 const offset = Reader.readShort();
                 if (isFalsey(peek(0))) vm.ip += offset;
             },
+            .loop => {
+                const offset = Reader.readShort();
+                vm.ip -= offset;
+            },
             .@"return" => {
                 break;
             },

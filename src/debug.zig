@@ -48,6 +48,8 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
         .jump,
         .jump_if_false,
         => return try jumpInstruction(instruction, 1, c, offset, writer),
+        .loop,
+        => return try jumpInstruction(instruction, -1, c, offset, writer),
         .nil,
         .true,
         .false,
@@ -112,16 +114,20 @@ fn numLongInstruction(kind: usize, c: *const Chunk, offset: usize, writer: anyty
 
 fn jumpInstruction(
     kind: usize,
-    comptime sign: comptime_int,
+    comptime sign: i2,
     c: *const Chunk,
     offset: usize,
     writer: anytype,
 ) !usize {
     const jump = (@as(u16, c.code[offset + 1]) << 8) | c.code[offset + 2];
+    const jump_target = if (sign == 1)
+        offset + 3 + jump
+    else
+        offset + 3 - jump;
     try writer.print("{s:<16} {d:4} -> {d}\n", .{
         chunk.OpCode.names[kind],
         offset,
-        offset + 3 + sign * jump,
+        jump_target,
     });
     return offset + 3;
 }

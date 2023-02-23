@@ -106,6 +106,20 @@ fn emitOps(ops: []const OpCode) !void {
     }
 }
 
+fn emitLoop(loop_start: usize) !void {
+    try emitOp(.loop);
+
+    const offset = currentChunk().code.len - loop_start + 2;
+    if (offset > std.math.maxInt(u16)) {
+        errorAtPrevious("Loop body too large.");
+    }
+
+    try emitBytes(&.{
+        @truncate(u8, offset >> 8),
+        @truncate(u8, offset),
+    });
+}
+
 fn emitJump(instruction: OpCode) !usize {
     try emitOp(instruction);
     try emitBytes(&.{ 0xff, 0xff });
@@ -526,6 +540,8 @@ fn statement() ParseError!void {
         try printStatement();
     } else if (match(.@"if")) {
         try ifStatement();
+    } else if (match(.@"while")) {
+        try whileStatement();
     } else if (match(.left_brace)) {
         beginScope();
         try block();
@@ -539,6 +555,21 @@ fn printStatement() !void {
     try expression();
     consume(.semicolon, "Expect ';' after value.");
     try emitOp(.print);
+}
+
+fn whileStatement() !void {
+    const loop_start = currentChunk().code.len;
+    consume(.left_paren, "Expect '(' after 'while'.");
+    try expression();
+    consume(.right_paren, "Expect ')' after condition.");
+
+    const exit_jump = try emitJump(.jump_if_false);
+    try emitOp(.pop);
+    try statement();
+    try emitLoop(loop_start);
+
+    patchJump(exit_jump);
+    try emitOp(.pop);
 }
 
 fn expressionStatement() !void {
