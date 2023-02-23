@@ -127,7 +127,7 @@ fn emitJump(instruction: OpCode) !usize {
 }
 
 fn emitReturn() !void {
-    try emitOp(.@"return");
+    try emitOps(&.{ .nil, .@"return" });
 }
 
 fn emitConstant(value: Value) !void {
@@ -630,6 +630,8 @@ fn statement() ParseError!void {
         try forStatement();
     } else if (match(.@"if")) {
         try ifStatement();
+    } else if (match(.@"return")) {
+        try returnStatement();
     } else if (match(.@"while")) {
         try whileStatement();
     } else if (match(.left_brace)) {
@@ -645,6 +647,19 @@ fn printStatement() !void {
     try expression();
     consume(.semicolon, "Expect ';' after value.");
     try emitOp(.print);
+}
+
+fn returnStatement() !void {
+    if (current.?.type == .script) {
+        errorAtPrevious("Can't return from top-level code.");
+    }
+    if (match(.semicolon)) {
+        try emitReturn();
+    } else {
+        try expression();
+        consume(.semicolon, "Expect ';' after return value.");
+        try emitOp(.@"return");
+    }
 }
 
 fn whileStatement() !void {

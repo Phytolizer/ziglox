@@ -22,6 +22,7 @@ const CallFrame = struct {
     function: *ObjFunction,
     ip: usize,
     slots: []Value,
+    slots_offset: usize,
 };
 
 const VM = struct {
@@ -93,7 +94,8 @@ fn call(function: *ObjFunction, arg_count: usize) !void {
     vm.frame_count += 1;
     frame.function = function;
     frame.ip = 0;
-    frame.slots = vm.stack[vm.stack_top - arg_count - 1 .. vm.stack.len];
+    frame.slots_offset = vm.stack_top - arg_count - 1;
+    frame.slots = vm.stack[frame.slots_offset..vm.stack.len];
 }
 
 fn callValue(callee: Value, arg_count: usize) !void {
@@ -351,15 +353,23 @@ fn run() !void {
                 frame = &vm.frames[vm.frame_count - 1];
             },
             .@"return" => {
-                break;
+                const result = pop();
+                vm.frame_count -= 1;
+                if (vm.frame_count == 0) {
+                    _ = pop();
+                    try bw.flush();
+                    return;
+                }
+
+                vm.stack_top = frame.slots_offset;
+                push(result);
+                frame = &vm.frames[vm.frame_count - 1];
             },
             _ => {
                 @panic("Unknown opcode");
             },
         }
     }
-
-    try bw.flush();
 }
 
 fn concatenate() !void {

@@ -3,8 +3,8 @@ const chunk = @import("chunk.zig");
 const Chunk = chunk.Chunk;
 const value = @import("value.zig");
 
-pub const TRACE_EXECUTION = true;
-pub const PRINT_CODE = true;
+pub const TRACE_EXECUTION = false;
+pub const PRINT_CODE = false;
 
 pub fn disassembleChunk(c: *const Chunk, name: []const u8) !void {
     var buf = std.io.bufferedWriter(std.io.getStdOut().writer());
