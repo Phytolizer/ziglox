@@ -149,17 +149,17 @@ fn defineVariable(global: usize) !void {
     try emitDynamic(.define_global, .define_global_long, global);
 }
 
-fn number() ParseError!void {
+fn number(_: bool) ParseError!void {
     const value = std.fmt.parseFloat(f64, parser.previous.text) catch unreachable;
     try emitConstant(.{ .number = value });
 }
 
-fn grouping() ParseError!void {
+fn grouping(_: bool) ParseError!void {
     try expression();
     consume(.right_paren, "Expect ')' after expression.");
 }
 
-fn unary() ParseError!void {
+fn unary(_: bool) ParseError!void {
     const operator_kind = parser.previous.kind;
 
     try parsePrecedence(.unary);
@@ -171,7 +171,7 @@ fn unary() ParseError!void {
     }
 }
 
-fn binary() ParseError!void {
+fn binary(_: bool) ParseError!void {
     const operator_kind = parser.previous.kind;
 
     const rule = getRule(operator_kind);
@@ -214,7 +214,7 @@ const ParseRule = struct {
 
 const ParseError = std.mem.Allocator.Error;
 
-const ParseFn = *const fn () ParseError!void;
+const ParseFn = *const fn (can_assign: bool) ParseError!void;
 
 const rules = std.EnumArray(Token.Kind, ParseRule).init(.{
     .left_paren = .{ .prefix = grouping },
@@ -270,16 +270,21 @@ fn parsePrecedence(precedence: Precedence) ParseError!void {
         return;
     };
 
-    try prefixRule();
+    const can_assign = @enumToInt(precedence) <= @enumToInt(Precedence.assignment);
+    try prefixRule(can_assign);
 
     while (@enumToInt(precedence) <= @enumToInt(getRule(parser.current.kind).precedence)) {
         advance();
         const infixRule = getRule(parser.previous.kind).infix orelse unreachable;
-        try infixRule();
+        try infixRule(can_assign);
+    }
+
+    if (can_assign and match(.equal)) {
+        errorAtPrevious("Invalid assignment target.");
     }
 }
 
-fn literal() ParseError!void {
+fn literal(_: bool) ParseError!void {
     switch (parser.previous.kind) {
         .nil => try emitOp(.nil),
         .true => try emitOp(.true),
@@ -288,7 +293,7 @@ fn literal() ParseError!void {
     }
 }
 
-fn string() ParseError!void {
+fn string(_: bool) ParseError!void {
     try emitConstant(Value.initObj(try obj.copyString(
         parser.previous.text[1 .. parser.previous.text.len - 1],
     )));
@@ -308,9 +313,9 @@ fn emitDynamic(short_op: OpCode, long_op: OpCode, value: usize) !void {
     } else unreachable;
 }
 
-fn namedVariable(name: Token) ParseError!void {
+fn namedVariable(name: Token, can_assign: bool) ParseError!void {
     const arg = try identifierConstant(name);
-    if (match(.equal)) {
+    if (can_assign and match(.equal)) {
         try expression();
         try emitDynamic(.set_global, .set_global_long, arg);
     } else {
@@ -318,8 +323,8 @@ fn namedVariable(name: Token) ParseError!void {
     }
 }
 
-fn variable() ParseError!void {
-    try namedVariable(parser.previous);
+fn variable(can_assign: bool) ParseError!void {
+    try namedVariable(parser.previous, can_assign);
 }
 
 fn declaration() !void {
