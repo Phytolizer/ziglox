@@ -130,6 +130,13 @@ fn run() !void {
             push(@unionInit(Value, @tagName(value_kind), op(a, b)));
         }
     }.f;
+    const defineGlobal = struct {
+        fn f(comptime read_fn: fn () *ObjString) !void {
+            const name = read_fn();
+            _ = try vm.globals.set(name, peek(0));
+            _ = pop();
+        }
+    }.f;
     const getGlobal = struct {
         fn f(comptime read_fn: fn () *ObjString) !void {
             const name = read_fn();
@@ -173,16 +180,8 @@ fn run() !void {
             .pop => _ = pop(),
             .get_global => try getGlobal(Reader.readString),
             .get_global_long => try getGlobal(Reader.readStringLong),
-            .define_global => {
-                const name = Reader.readString();
-                _ = try vm.globals.set(name, peek(0));
-                _ = pop();
-            },
-            .define_global_long => {
-                const name = Reader.readStringLong();
-                _ = try vm.globals.set(name, peek(0));
-                _ = pop();
-            },
+            .define_global => try defineGlobal(Reader.readString),
+            .define_global_long => try defineGlobal(Reader.readStringLong),
             .equal => {
                 const b = pop();
                 const a = pop();
