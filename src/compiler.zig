@@ -12,6 +12,8 @@ const obj = @import("obj.zig");
 pub fn compile(source: []const u8, chunk: *Chunk) !void {
     scanner.init(source);
     parser = .{};
+    var compiler = Compiler{};
+    initCompiler(&compiler);
     compiling_chunk = chunk;
     advance();
 
@@ -32,6 +34,7 @@ const Parser = struct {
 };
 
 var parser = Parser{};
+var current: ?*Compiler = null;
 var compiling_chunk: *Chunk = undefined;
 
 fn currentChunk() *Chunk {
@@ -111,6 +114,10 @@ fn emitConstant(value: Value) !void {
     try currentChunk().writeConstant(value, parser.previous.line);
 }
 
+fn initCompiler(compiler: *Compiler) void {
+    current = compiler;
+}
+
 fn endCompiler() !void {
     try emitReturn();
     if (debug.PRINT_CODE and !parser.had_error) {
@@ -118,8 +125,31 @@ fn endCompiler() !void {
     }
 }
 
+fn beginScope() void {
+    current.?.scope_depth += 1;
+}
+
+fn endScope() !void {
+    current.?.scope_depth -= 1;
+
+    while (current.?.local_count > 0 and
+        current.?.locals[current.?.local_count - 1].depth > current.?.scope_depth)
+    {
+        try emitOp(.pop);
+        current.?.local_count -= 1;
+    }
+}
+
 fn expression() ParseError!void {
     try parsePrecedence(.assignment);
+}
+
+fn block() ParseError!void {
+    while (!check(.right_brace) and !check(.eof)) {
+        try declaration();
+    }
+
+    consume(.right_brace, "Expect '}' after block.");
 }
 
 fn identifierConstant(name: Token) !usize {
@@ -128,8 +158,57 @@ fn identifierConstant(name: Token) !usize {
     });
 }
 
+fn identifiersEqual(a: Token, b: Token) bool {
+    return std.mem.eql(u8, a.text, b.text);
+}
+
+fn resolveLocal(compiler: *Compiler, name: Token) ?usize {
+    var i = compiler.local_count;
+    while (i > 0) : (i -= 1) {
+        const local = &compiler.locals[i - 1];
+        if (identifiersEqual(name, local.name)) {
+            return i;
+        }
+    }
+    return null;
+}
+
+fn addLocal(name: Token) void {
+    if (current.?.local_count == UINT8_COUNT) {
+        errorAtPrevious("Too many local variables in function.");
+        return;
+    }
+
+    const local = &current.?.locals[current.?.local_count];
+    current.?.local_count += 1;
+    local.name = name;
+    local.depth = current.?.scope_depth;
+}
+
+fn declareVariable() void {
+    if (current.?.scope_depth == 0) return;
+
+    const name = &parser.previous;
+    var i = current.?.local_count;
+    while (i > 0) : (i -= 1) {
+        const local = &current.?.locals[i - 1];
+        if (local.depth != -1 and local.depth < current.?.scope_depth) {
+            break;
+        }
+
+        if (identifiersEqual(name.*, local.name)) {
+            errorAtPrevious("Already a variable with this name in this scope.");
+        }
+    }
+    addLocal(name.*);
+}
+
 fn parseVariable(error_message: []const u8) !usize {
     consume(.identifier, error_message);
+
+    declareVariable();
+    if (current.?.scope_depth > 0) return 0;
+
     return identifierConstant(parser.previous);
 }
 
@@ -146,6 +225,8 @@ fn varDeclaration() !void {
 }
 
 fn defineVariable(global: usize) !void {
+    if (current.?.scope_depth > 0) return;
+
     try emitDynamic(.define_global, .define_global_long, global);
 }
 
@@ -210,6 +291,19 @@ const ParseRule = struct {
     prefix: ?ParseFn = null,
     infix: ?ParseFn = null,
     precedence: Precedence = .none,
+};
+
+const UINT8_COUNT = std.math.maxInt(u8) + 1;
+
+const Local = struct {
+    name: Token,
+    depth: usize,
+};
+
+const Compiler = struct {
+    locals: [UINT8_COUNT]Local = undefined,
+    local_count: usize = 0,
+    scope_depth: usize = 0,
 };
 
 const ParseError = std.mem.Allocator.Error;
@@ -314,12 +408,31 @@ fn emitDynamic(short_op: OpCode, long_op: OpCode, value: usize) !void {
 }
 
 fn namedVariable(name: Token, can_assign: bool) ParseError!void {
-    const arg = try identifierConstant(name);
+    const Ops = struct {
+        get: OpCode,
+        set: OpCode,
+        get_long: OpCode,
+        set_long: OpCode,
+    };
+    var ops = Ops{
+        .get = .get_local,
+        .set = .set_local,
+        .get_long = .get_local_long,
+        .set_long = .set_local_long,
+    };
+    const arg = resolveLocal(current.?, name) orelse blk: {
+        ops.get = .get_global;
+        ops.set = .set_global;
+        ops.get_long = .get_global_long;
+        ops.set_long = .set_global_long;
+        break :blk try identifierConstant(name);
+    };
+
     if (can_assign and match(.equal)) {
         try expression();
-        try emitDynamic(.set_global, .set_global_long, arg);
+        try emitDynamic(ops.set, ops.set_long, arg);
     } else {
-        try emitDynamic(.get_global, .get_global_long, arg);
+        try emitDynamic(ops.get, ops.get_long, arg);
     }
 }
 
@@ -361,11 +474,16 @@ fn synchronize() void {
     }
 }
 
-fn statement() !void {
-    if (match(.print))
-        try printStatement()
-    else
+fn statement() ParseError!void {
+    if (match(.print)) {
+        try printStatement();
+    } else if (match(.left_brace)) {
+        beginScope();
+        try block();
+        try endScope();
+    } else {
         try expressionStatement();
+    }
 }
 
 fn printStatement() !void {

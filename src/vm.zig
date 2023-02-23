@@ -100,16 +100,19 @@ fn run() !void {
             vm.ip += 1;
             return byte;
         }
+        fn read3Bytes() u24 {
+            const hi = readByte();
+            const md = readByte();
+            const lo = readByte();
+
+            return (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
+        }
         fn readConstant() Value {
             const constant = vm.chunk.?.constants.values[readByte()];
             return constant;
         }
         fn readConstantLong() Value {
-            const hi = readByte();
-            const md = readByte();
-            const lo = readByte();
-
-            const constant: u24 = (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
+            const constant = read3Bytes();
             return vm.chunk.?.constants.values[constant];
         }
         fn readString() *ObjString {
@@ -130,15 +133,13 @@ fn run() !void {
             push(@unionInit(Value, @tagName(value_kind), op(a, b)));
         }
     }.f;
-    const defineGlobal = struct {
-        fn f(comptime readFn: fn () *ObjString) !void {
+    const LengthOps = struct {
+        fn defineGlobal(comptime readFn: fn () *ObjString) !void {
             const name = readFn();
             _ = try vm.globals.set(name, peek(0));
             _ = pop();
         }
-    }.f;
-    const getGlobal = struct {
-        fn f(comptime readFn: fn () *ObjString) !void {
+        fn getGlobal(comptime readFn: fn () *ObjString) !void {
             const name = readFn();
             if (vm.globals.get(name)) |value| {
                 push(value);
@@ -147,9 +148,7 @@ fn run() !void {
                 return error.Runtime;
             }
         }
-    }.f;
-    const setGlobal = struct {
-        fn f(comptime readFn: fn () *ObjString) !void {
+        fn setGlobal(comptime readFn: fn () *ObjString) !void {
             const name = readFn();
             if (try vm.globals.set(name, peek(0))) {
                 _ = vm.globals.delete(name);
@@ -157,7 +156,21 @@ fn run() !void {
                 return error.Runtime;
             }
         }
-    }.f;
+        fn readNum(comptime long: bool) usize {
+            return if (long)
+                Reader.read3Bytes()
+            else
+                Reader.readByte();
+        }
+        fn getLocal(comptime long: bool) !void {
+            const slot = readNum(long);
+            push(vm.stack[slot]);
+        }
+        fn setLocal(comptime long: bool) !void {
+            const slot = readNum(long);
+            vm.stack[slot] = peek(0);
+        }
+    };
 
     var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
     const bww = bw.writer();
@@ -188,12 +201,16 @@ fn run() !void {
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
             .pop => _ = pop(),
-            .get_global => try getGlobal(Reader.readString),
-            .get_global_long => try getGlobal(Reader.readStringLong),
-            .define_global => try defineGlobal(Reader.readString),
-            .define_global_long => try defineGlobal(Reader.readStringLong),
-            .set_global => try setGlobal(Reader.readString),
-            .set_global_long => try setGlobal(Reader.readStringLong),
+            .get_local => try LengthOps.getLocal(false),
+            .get_local_long => try LengthOps.getLocal(true),
+            .get_global => try LengthOps.getGlobal(Reader.readString),
+            .get_global_long => try LengthOps.getGlobal(Reader.readStringLong),
+            .define_global => try LengthOps.defineGlobal(Reader.readString),
+            .define_global_long => try LengthOps.defineGlobal(Reader.readStringLong),
+            .set_local => try LengthOps.setLocal(false),
+            .set_local_long => try LengthOps.setLocal(true),
+            .set_global => try LengthOps.setGlobal(Reader.readString),
+            .set_global_long => try LengthOps.setGlobal(Reader.readStringLong),
             .equal => {
                 const b = pop();
                 const a = pop();
