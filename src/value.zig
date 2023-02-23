@@ -4,11 +4,13 @@ const memory = @import("memory.zig");
 const vm_mod = @import("vm.zig");
 const chunk_mod = @import("chunk.zig");
 const Chunk = chunk_mod.Chunk;
+const debug = @import("debug.zig");
 
 const vm = &vm_mod.vm;
 
 pub const Obj = struct {
     kind: Kind,
+    is_marked: bool = false,
     next: ?*Obj = null,
 
     pub const Kind = enum {
@@ -20,6 +22,13 @@ pub const Obj = struct {
     };
 
     pub fn deinit(self: *@This()) void {
+        if (debug.LOG_GC) {
+            std.debug.print(
+                "0x{x} free type {s}\n",
+                .{ @ptrToInt(self), std.meta.tagName(self.kind) },
+            );
+        }
+
         switch (self.kind) {
             .closure => {
                 const closure = @fieldParentPtr(ObjClosure, "obj", self);
@@ -37,6 +46,7 @@ pub const Obj = struct {
             },
             .string => {
                 const string = @fieldParentPtr(ObjString, "obj", self);
+                std.debug.print("{s}\n", .{string.text});
                 g.allocator.free(string.text);
                 g.allocator.destroy(string);
             },
@@ -116,6 +126,14 @@ fn allocateObj(comptime T: type, kind: Obj.Kind) !*T {
         .next = vm.objects,
     };
     vm.objects = castObj(obj);
+
+    if (debug.LOG_GC) {
+        std.debug.print(
+            "0x{x} allocate {d} for {s}\n",
+            .{ @ptrToInt(obj), @sizeOf(T), std.meta.tagName(kind) },
+        );
+    }
+
     return obj;
 }
 

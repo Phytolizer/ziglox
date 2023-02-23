@@ -4,6 +4,8 @@ const Chunk = chunk.Chunk;
 const value = @import("value.zig");
 
 pub const TRACE_EXECUTION = false;
+pub const STRESS_GC = true;
+pub const LOG_GC = true;
 pub const PRINT_CODE = false;
 
 pub fn disassembleChunk(c: *const Chunk, name: []const u8) !void {

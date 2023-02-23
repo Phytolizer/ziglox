@@ -37,6 +37,8 @@ const VM = struct {
     strings: Table = .{},
     open_upvalues: ?*ObjUpvalue = null,
     objects: ?*Obj = null,
+    gray_count: usize = 0,
+    gray_stack: []*Obj = &.{},
 };
 
 pub var vm = VM{};
@@ -70,6 +72,7 @@ fn freeObjects() void {
         obj.deinit();
         object = next;
     }
+    g.gpa.allocator().free(vm.gray_stack);
 }
 
 fn push(value: Value) void {

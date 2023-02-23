@@ -8,6 +8,7 @@ const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const ObjFunction = value_mod.ObjFunction;
 const debug = @import("debug.zig");
+const memory = @import("memory.zig");
 
 pub fn compile(source: []const u8) !*ObjFunction {
     scanner.init(source);
@@ -24,6 +25,13 @@ pub fn compile(source: []const u8) !*ObjFunction {
     if (parser.had_error)
         return error.Compile;
     return function;
+}
+
+pub fn markRoots() void {
+    var compiler = current;
+    while (compiler) |c| : (compiler = c.enclosing) {
+        memory.markObject(value_mod.castObj(c.function));
+    }
 }
 
 const Parser = struct {
