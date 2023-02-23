@@ -133,7 +133,8 @@ fn endScope() !void {
     current.?.scope_depth -= 1;
 
     while (current.?.local_count > 0 and
-        current.?.locals[current.?.local_count - 1].depth > current.?.scope_depth)
+        (current.?.locals[current.?.local_count - 1].depth orelse 0) >
+        current.?.scope_depth)
     {
         try emitOp(.pop);
         current.?.local_count -= 1;
@@ -167,6 +168,9 @@ fn resolveLocal(compiler: *Compiler, name: Token) ?usize {
     while (i > 0) : (i -= 1) {
         const local = &compiler.locals[i - 1];
         if (identifiersEqual(name, local.name)) {
+            if (local.depth == null) {
+                errorAtPrevious("Can't read local variable in its own initializer.");
+            }
             return i;
         }
     }
@@ -182,7 +186,7 @@ fn addLocal(name: Token) void {
     const local = &current.?.locals[current.?.local_count];
     current.?.local_count += 1;
     local.name = name;
-    local.depth = current.?.scope_depth;
+    local.depth = null;
 }
 
 fn declareVariable() void {
@@ -192,7 +196,7 @@ fn declareVariable() void {
     var i = current.?.local_count;
     while (i > 0) : (i -= 1) {
         const local = &current.?.locals[i - 1];
-        if (local.depth != -1 and local.depth < current.?.scope_depth) {
+        if (local.depth != null and local.depth.? < current.?.scope_depth) {
             break;
         }
 
@@ -212,6 +216,10 @@ fn parseVariable(error_message: []const u8) !usize {
     return identifierConstant(parser.previous);
 }
 
+fn markInitialized() void {
+    current.?.locals[current.?.local_count - 1].depth = current.?.scope_depth;
+}
+
 fn varDeclaration() !void {
     const global = try parseVariable("Expect variable name.");
 
@@ -225,7 +233,10 @@ fn varDeclaration() !void {
 }
 
 fn defineVariable(global: usize) !void {
-    if (current.?.scope_depth > 0) return;
+    if (current.?.scope_depth > 0) {
+        markInitialized();
+        return;
+    }
 
     try emitDynamic(.define_global, .define_global_long, global);
 }
@@ -297,7 +308,7 @@ const UINT8_COUNT = std.math.maxInt(u8) + 1;
 
 const Local = struct {
     name: Token,
-    depth: usize,
+    depth: ?usize,
 };
 
 const Compiler = struct {
