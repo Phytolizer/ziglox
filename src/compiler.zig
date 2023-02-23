@@ -145,9 +145,13 @@ fn patchJump(offset: usize) void {
 }
 
 fn initCompiler(compiler: *Compiler, @"type": FunctionType) !void {
+    compiler.enclosing = current;
     compiler.type = @"type";
     compiler.function = try obj.newFunction();
     current = compiler;
+    if (@"type" != .script) {
+        current.?.function.name = try obj.copyString(parser.previous.text);
+    }
 
     const local = &current.?.locals[current.?.local_count];
     current.?.local_count += 1;
@@ -165,6 +169,7 @@ fn endCompiler() !*ObjFunction {
         );
     }
 
+    current = current.?.enclosing;
     return function;
 }
 
@@ -194,6 +199,39 @@ fn block() ParseError!void {
     }
 
     consume(.right_brace, "Expect '}' after block.");
+}
+
+fn parseFunction(@"type": FunctionType) !void {
+    var compiler = Compiler{};
+    try initCompiler(&compiler, @"type");
+    beginScope();
+
+    consume(.left_paren, "Expect '(' after function name.");
+    if (!check(.right_paren)) {
+        while (true) {
+            current.?.function.arity += 1;
+            if (current.?.function.arity > 255) {
+                errorAtCurrent("Can't have more than 255 parameters.");
+            }
+            const constant = try parseVariable("Expect parameter name.");
+            try defineVariable(constant);
+
+            if (!match(.comma)) break;
+        }
+    }
+    consume(.right_paren, "Expect ')' after parameters.");
+    consume(.left_brace, "Expect '{' before function body.");
+    try block();
+
+    const function = try endCompiler();
+    try emitConstant(.{ .obj = obj.castObj(function) });
+}
+
+fn funDeclaration() !void {
+    const global = try parseVariable("Expect function name.");
+    markInitialized();
+    try parseFunction(.function);
+    try defineVariable(global);
 }
 
 fn identifierConstant(name: Token) !usize {
@@ -260,6 +298,8 @@ fn parseVariable(error_message: []const u8) !usize {
 }
 
 fn markInitialized() void {
+    if (current.?.scope_depth == 0) return;
+
     current.?.locals[current.?.local_count - 1].depth = current.?.scope_depth;
 }
 
@@ -380,6 +420,7 @@ const FunctionType = enum {
 };
 
 const Compiler = struct {
+    enclosing: ?*@This() = null,
     function: *ObjFunction = undefined,
     type: FunctionType = .script,
 
@@ -523,10 +564,13 @@ fn variable(can_assign: bool) ParseError!void {
 }
 
 fn declaration() !void {
-    if (match(.@"var"))
-        try varDeclaration()
-    else
+    if (match(.fun)) {
+        try funDeclaration();
+    } else if (match(.@"var")) {
+        try varDeclaration();
+    } else {
         try statement();
+    }
 
     if (parser.panic_mode) synchronize();
 }
