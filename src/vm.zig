@@ -131,15 +131,15 @@ fn run() !void {
         }
     }.f;
     const defineGlobal = struct {
-        fn f(comptime read_fn: fn () *ObjString) !void {
-            const name = read_fn();
+        fn f(comptime readFn: fn () *ObjString) !void {
+            const name = readFn();
             _ = try vm.globals.set(name, peek(0));
             _ = pop();
         }
     }.f;
     const getGlobal = struct {
-        fn f(comptime read_fn: fn () *ObjString) !void {
-            const name = read_fn();
+        fn f(comptime readFn: fn () *ObjString) !void {
+            const name = readFn();
             if (vm.globals.get(name)) |value| {
                 push(value);
             } else {
@@ -149,8 +149,8 @@ fn run() !void {
         }
     }.f;
     const setGlobal = struct {
-        fn f(comptime read_fn: fn () *ObjString) !void {
-            const name = read_fn();
+        fn f(comptime readFn: fn () *ObjString) !void {
+            const name = readFn();
             if (try vm.globals.set(name, peek(0))) {
                 _ = vm.globals.delete(name);
                 runtimeError("Undefined variable '{s}'.", .{name.text});
