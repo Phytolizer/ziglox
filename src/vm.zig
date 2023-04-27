@@ -4,36 +4,63 @@ const Chunk = chunk_mod.Chunk;
 const OpCode = chunk_mod.OpCode;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const Obj = value_mod.Obj;
+const ObjString = value_mod.ObjString;
+const ObjFunction = value_mod.ObjFunction;
+const ObjClosure = value_mod.ObjClosure;
+const ObjUpvalue = value_mod.ObjUpvalue;
+const NativeFn = value_mod.NativeFn;
 const debug = @import("debug.zig");
 const compiler = @import("compiler.zig");
+const UINT8_COUNT = compiler.UINT8_COUNT;
 const g = @import("global.zig");
-const obj_mod = @import("obj.zig");
-const Obj = obj_mod.Obj;
 const table_mod = @import("table.zig");
 const Table = table_mod.Table;
 
-const STACK_MAX = 256;
+const FRAMES_MAX = 64;
+const STACK_MAX = FRAMES_MAX * UINT8_COUNT;
+
+const CallFrame = struct {
+    closure: *ObjClosure,
+    ip: usize,
+    slots: []Value,
+    slots_offset: usize,
+};
 
 const VM = struct {
-    chunk: ?*Chunk = null,
-    ip: usize = 0,
+    frames: [FRAMES_MAX]CallFrame = undefined,
+    frame_count: usize = 0,
+
     stack: [STACK_MAX]Value = undefined,
     stack_top: usize = 0,
-    objects: ?*Obj = null,
+    globals: Table = .{},
     strings: Table = .{},
+    open_upvalues: ?*ObjUpvalue = null,
+    objects: ?*Obj = null,
+    gray_count: usize = 0,
+    gray_stack: []*Obj = &.{},
 };
 
 pub var vm = VM{};
 
-pub fn init() void {
+fn clockNative(_: []const Value) Value {
+    const now = std.time.milliTimestamp();
+    return .{ .number = @intToFloat(f64, now) / 1000.0 };
+}
+
+pub fn init() !void {
     resetStack();
+    try defineNative("clock", &clockNative);
 }
 
 fn resetStack() void {
     vm.stack_top = 0;
+    vm.frame_count = 0;
+    vm.open_upvalues = null;
 }
 
 pub fn deinit() void {
+    vm.globals.deinit();
     vm.strings.deinit();
     freeObjects();
 }
@@ -45,6 +72,7 @@ fn freeObjects() void {
         obj.deinit();
         object = next;
     }
+    g.gpa.allocator().free(vm.gray_stack);
 }
 
 fn push(value: Value) void {
@@ -61,15 +89,114 @@ fn peek(distance: usize) Value {
     return vm.stack[vm.stack_top - 1 - distance];
 }
 
+fn call(closure: *ObjClosure, arg_count: usize) !void {
+    if (arg_count != closure.function.arity) {
+        runtimeError(
+            "Expected {d} arguments but got {d}.",
+            .{ closure.function.arity, arg_count },
+        );
+        return error.Runtime;
+    }
+
+    if (vm.frame_count == FRAMES_MAX) {
+        runtimeError("Stack overflow.", .{});
+        return error.Runtime;
+    }
+
+    const frame = &vm.frames[vm.frame_count];
+    vm.frame_count += 1;
+    frame.closure = closure;
+    frame.ip = 0;
+    frame.slots_offset = vm.stack_top - arg_count - 1;
+    frame.slots = vm.stack[frame.slots_offset..vm.stack.len];
+}
+
+fn callValue(callee: Value, arg_count: usize) !void {
+    if (callee.isObj()) {
+        switch (callee.objKind()) {
+            .closure => {
+                try call(callee.asClosure(), arg_count);
+                return;
+            },
+            .native => {
+                const native = callee.asNative();
+                const result = native(vm.stack[vm.stack_top - arg_count .. vm.stack_top]);
+                vm.stack_top -= arg_count + 1;
+                push(result);
+                return;
+            },
+            else => {},
+        }
+    }
+    runtimeError("Can only call functions and classes.", .{});
+    return error.Runtime;
+}
+
+fn captureUpvalue(local: *Value) !*ObjUpvalue {
+    var prev_upvalue: ?*ObjUpvalue = null;
+    var upvalue = vm.open_upvalues;
+    while (upvalue) |uv| {
+        if (@ptrToInt(uv.location) <= @ptrToInt(local)) break;
+        prev_upvalue = uv;
+        upvalue = uv.next;
+    }
+
+    if (upvalue) |uv| if (uv.location == local) {
+        return uv;
+    };
+
+    const created_upvalue = try value_mod.newUpvalue(local);
+    created_upvalue.next = upvalue;
+
+    if (prev_upvalue) |puv| {
+        puv.next = created_upvalue;
+    } else {
+        vm.open_upvalues = created_upvalue;
+    }
+
+    return created_upvalue;
+}
+
+fn closeUpvalues(last: *Value) void {
+    while (vm.open_upvalues) |ouv| {
+        if (@ptrToInt(ouv.location) < @ptrToInt(last)) break;
+
+        const upvalue = ouv;
+        upvalue.closed = upvalue.location.*;
+        upvalue.location = &upvalue.closed;
+        vm.open_upvalues = upvalue.next;
+    }
+}
+
 fn isFalsey(v: Value) bool {
     return v.isNil() or (v.isBoolean() and !v.boolean);
 }
 
 fn runtimeError(comptime fmt: []const u8, args: anytype) void {
-    std.debug.print(fmt, args);
-    const instruction = vm.ip - 1;
-    const line = vm.chunk.?.getLine(instruction);
-    std.debug.print("\n[line {d}] in script\n", .{line});
+    std.debug.print(fmt ++ "\n", args);
+
+    var i = vm.frame_count;
+    while (i > 0) : (i -= 1) {
+        const frame = &vm.frames[i - 1];
+        const function = frame.closure.function;
+        const instruction = frame.ip;
+        const line = function.chunk.getLine(instruction);
+        std.debug.print("[line {d}] in ", .{line});
+        if (function.name) |name| {
+            std.debug.print("{s}()\n", .{name.text});
+        } else {
+            std.debug.print("script\n", .{});
+        }
+    }
+    resetStack();
+}
+
+fn defineNative(name: []const u8, function: *const NativeFn) !void {
+    push(Value.initObj(try value_mod.copyString(name)));
+    push(Value.initObj(try value_mod.newNative(function)));
+    _ = try vm.globals.set(vm.stack[0].asString(), vm.stack[1]);
+    _ = pop();
+    _ = pop();
 }
 
 const InterpretError = error{
@@ -79,37 +206,56 @@ const InterpretError = error{
     std.mem.Allocator.Error;
 
 pub fn interpret(source: []const u8) InterpretError!void {
-    var chunk = Chunk.init();
-    defer chunk.deinit();
+    const function = try compiler.compile(source);
 
-    try compiler.compile(source, &chunk);
-
-    vm.chunk = &chunk;
-    vm.ip = 0;
+    push(Value.initObj(function));
+    const closure = try value_mod.newClosure(function);
+    _ = pop();
+    push(Value.initObj(closure));
+    try call(closure, 0);
 
     try run();
 }
 
 fn run() !void {
+    var frame = &vm.frames[vm.frame_count - 1];
     const Reader = struct {
-        fn readByte() u8 {
-            const byte = vm.chunk.?.code[vm.ip];
-            vm.ip += 1;
+        frame: **CallFrame,
+
+        fn readByte(self: @This()) u8 {
+            const byte = self.frame.*.closure.function.chunk.code[self.frame.*.ip];
+            self.frame.*.ip += 1;
             return byte;
         }
-        fn readConstant() Value {
-            const constant = vm.chunk.?.constants.values[readByte()];
-            return constant;
-        }
-        fn readConstantLong() Value {
-            const hi = readByte();
-            const md = readByte();
-            const lo = readByte();
+        fn readShort(self: @This()) u16 {
+            const hi = self.readByte();
+            const lo = self.readByte();
 
-            const constant: u24 = (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
-            return vm.chunk.?.constants.values[constant];
+            return (@as(u16, hi) << 8) | lo;
+        }
+        fn read3Bytes(self: @This()) u24 {
+            const hi = self.readByte();
+            const md = self.readByte();
+            const lo = self.readByte();
+
+            return (@as(u24, hi) << 16) | (@as(u24, md) << 8) | lo;
+        }
+        fn readConstant(self: @This()) Value {
+            const constant = self.readByte();
+            return self.frame.*.closure.function.chunk.constants.values[constant];
+        }
+        fn readConstantLong(self: @This()) Value {
+            const constant = self.read3Bytes();
+            return self.frame.*.closure.function.chunk.constants.values[constant];
+        }
+        fn readString(self: @This()) *ObjString {
+            return self.readConstant().asString();
+        }
+        fn readStringLong(self: @This()) *ObjString {
+            return self.readConstantLong().asString();
         }
     };
+    const reader = Reader{ .frame = &frame };
     const binaryOp = struct {
         fn f(comptime value_kind: Value.Kind, comptime T: type, comptime op: fn (f64, f64) T) !void {
             if (!peek(0).isNumber() or !peek(1).isNumber()) {
@@ -121,6 +267,60 @@ fn run() !void {
             push(@unionInit(Value, @tagName(value_kind), op(a, b)));
         }
     }.f;
+    const lengthOps = struct {
+        reader: Reader,
+
+        fn defineGlobal(self: @This(), comptime readFn: fn (Reader) *ObjString) !void {
+            const name = readFn(self.reader);
+            _ = try vm.globals.set(name, peek(0));
+            _ = pop();
+        }
+        fn getGlobal(self: @This(), comptime readFn: fn (Reader) *ObjString) !void {
+            const name = readFn(self.reader);
+            if (vm.globals.get(name)) |value| {
+                push(value);
+            } else {
+                runtimeError("Undefined variable '{s}'.", .{name.text});
+                return error.Runtime;
+            }
+        }
+        fn setGlobal(self: @This(), comptime readFn: fn (Reader) *ObjString) !void {
+            const name = readFn(self.reader);
+            if (try vm.globals.set(name, peek(0))) {
+                _ = vm.globals.delete(name);
+                runtimeError("Undefined variable '{s}'.", .{name.text});
+                return error.Runtime;
+            }
+        }
+        fn doClosure(self: @This(), comptime readFn: fn (Reader) Value) !void {
+            const function = readFn(self.reader).asFunction();
+            const closure = try value_mod.newClosure(function);
+            push(Value.initObj(closure));
+            for (closure.upvalues) |*upvalue| {
+                const is_local = self.reader.readByte();
+                const index = self.reader.readByte();
+                if (is_local != 0) {
+                    upvalue.* = try captureUpvalue(&self.reader.frame.*.slots[index]);
+                } else {
+                    upvalue.* = self.reader.frame.*.closure.upvalues[index];
+                }
+            }
+        }
+        fn readNum(self: @This(), comptime long: bool) usize {
+            return if (long)
+                self.reader.read3Bytes()
+            else
+                self.reader.readByte();
+        }
+        fn getLocal(self: @This(), comptime long: bool) !void {
+            const slot = self.readNum(long);
+            push(self.reader.frame.*.slots[slot]);
+        }
+        fn setLocal(self: @This(), comptime long: bool) !void {
+            const slot = self.readNum(long);
+            self.reader.frame.*.slots[slot] = peek(0);
+        }
+    }{ .reader = reader };
 
     var bw = std.io.bufferedWriter(std.io.getStdOut().writer());
     const bww = bw.writer();
@@ -135,22 +335,45 @@ fn run() !void {
                 try bww.writeAll(" ]");
             }
             try bww.writeByte('\n');
-            _ = try debug.disassembleInstruction(vm.chunk.?, vm.ip, bww);
+            _ = try debug.disassembleInstruction(
+                &frame.closure.function.chunk,
+                frame.ip,
+                bww,
+            );
+            try bw.flush();
         }
-        const instruction = Reader.readByte();
+        const instruction = reader.readByte();
         switch (@intToEnum(OpCode, instruction)) {
             .constant => {
-                const constant = Reader.readConstant();
+                const constant = reader.readConstant();
                 push(constant);
             },
             .constant_long => {
-                const constant = Reader.readConstantLong();
+                const constant = reader.readConstantLong();
                 push(constant);
             },
             .nil => push(.nil),
             .true => push(.{ .boolean = true }),
             .false => push(.{ .boolean = false }),
             .pop => _ = pop(),
+            .get_local => try lengthOps.getLocal(false),
+            .get_local_long => try lengthOps.getLocal(true),
+            .get_global => try lengthOps.getGlobal(Reader.readString),
+            .get_global_long => try lengthOps.getGlobal(Reader.readStringLong),
+            .define_global => try lengthOps.defineGlobal(Reader.readString),
+            .define_global_long => try lengthOps.defineGlobal(Reader.readStringLong),
+            .set_local => try lengthOps.setLocal(false),
+            .set_local_long => try lengthOps.setLocal(true),
+            .set_global => try lengthOps.setGlobal(Reader.readString),
+            .set_global_long => try lengthOps.setGlobal(Reader.readStringLong),
+            .get_upvalue => {
+                const slot = reader.readByte();
+                push(frame.closure.upvalues[slot].?.location.*);
+            },
+            .set_upvalue => {
+                const slot = reader.readByte();
+                frame.closure.upvalues[slot].?.location.* = peek(0);
+            },
             .equal => {
                 const b = pop();
                 const a = pop();
@@ -204,18 +427,49 @@ fn run() !void {
             .print => {
                 try value_mod.printValue(bww, pop());
                 try bww.writeByte('\n');
-                break;
+            },
+            .jump => {
+                const offset = reader.readShort();
+                frame.ip += offset;
+            },
+            .jump_if_false => {
+                const offset = reader.readShort();
+                if (isFalsey(peek(0))) frame.ip += offset;
+            },
+            .loop => {
+                const offset = reader.readShort();
+                frame.ip -= offset;
+            },
+            .call => {
+                const arg_count = reader.readByte();
+                try callValue(peek(arg_count), arg_count);
+                frame = &vm.frames[vm.frame_count - 1];
+            },
+            .closure => try lengthOps.doClosure(Reader.readConstant),
+            .closure_long => try lengthOps.doClosure(Reader.readConstantLong),
+            .close_upvalue => {
+                closeUpvalues(&vm.stack[vm.stack_top - 1]);
+                _ = pop();
             },
             .@"return" => {
-                break;
+                const result = pop();
+                closeUpvalues(@ptrCast(*Value, frame.slots.ptr));
+                vm.frame_count -= 1;
+                if (vm.frame_count == 0) {
+                    _ = pop();
+                    try bw.flush();
+                    return;
+                }
+
+                vm.stack_top = frame.slots_offset;
+                push(result);
+                frame = &vm.frames[vm.frame_count - 1];
             },
             _ => {
                 @panic("Unknown opcode");
             },
         }
     }
-
-    try bw.flush();
 }
 
 fn concatenate() !void {
@@ -224,6 +478,6 @@ fn concatenate() !void {
 
     const chars = try std.mem.concat(g.allocator, u8, &.{ a, b });
 
-    const result = try obj_mod.takeString(chars);
+    const result = try value_mod.takeString(chars);
     push(Value.initObj(result));
 }

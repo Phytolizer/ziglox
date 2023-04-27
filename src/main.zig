@@ -4,6 +4,8 @@ const chunk_mod = @import("chunk.zig");
 const Chunk = chunk_mod.Chunk;
 const debug = @import("debug.zig");
 const vm = @import("vm.zig");
+const memory_mod = @import("memory.zig");
+const GcAllocator = memory_mod.GcAllocator;
 
 pub fn main() void {
     // Hack to allow `defer` to work properly.
@@ -55,9 +57,11 @@ fn runFile(path: []const u8) !void {
 fn run() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.detectLeaks();
-    g.allocator = gpa.allocator();
+    g.gpa = gpa;
+    var gca = GcAllocator.init(gpa.allocator());
+    g.allocator = gca.allocator();
 
-    vm.init();
+    try vm.init();
     defer vm.deinit();
 
     const args = try std.process.argsAlloc(g.allocator);

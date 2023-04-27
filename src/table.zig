@@ -1,8 +1,7 @@
 const std = @import("std");
-const obj_mod = @import("obj.zig");
-const ObjString = obj_mod.ObjString;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const ObjString = value_mod.ObjString;
 const g = @import("global.zig");
 const memory = @import("memory.zig");
 
@@ -11,7 +10,7 @@ pub const Table = struct {
     count: usize = 0,
 
     pub fn deinit(self: @This()) void {
-        g.allocator.free(self.entries);
+        g.gpa.allocator().free(self.entries);
     }
 
     const MAX_LOAD = 0.75;
@@ -33,6 +32,14 @@ pub const Table = struct {
                     return key;
             } else if (entry.value.isNil()) return null;
             index = (index + 1) % self.entries.len;
+        }
+    }
+
+    pub fn removeWhite(self: *@This()) void {
+        for (self.entries) |ent| {
+            if (ent.key) |key| if (!key.obj.is_marked) {
+                _ = self.delete(key);
+            };
         }
     }
 
@@ -71,7 +78,7 @@ pub const Table = struct {
     }
 
     fn adjustCapacity(self: *@This(), capacity: usize) !void {
-        const entries = try g.allocator.alloc(Entry, capacity);
+        const entries = try g.gpa.allocator().alloc(Entry, capacity);
         std.mem.set(Entry, entries, .{ .key = null, .value = .nil });
 
         self.count = 0;
@@ -83,7 +90,7 @@ pub const Table = struct {
             }
         }
 
-        g.allocator.free(self.entries);
+        g.gpa.allocator().free(self.entries);
         self.entries = entries;
     }
 
@@ -102,6 +109,13 @@ pub const Table = struct {
                 return entry;
             }
             index = (index + 1) % entries.len;
+        }
+    }
+
+    pub fn mark(self: *@This()) void {
+        for (self.entries) |entry| {
+            memory.markObject(value_mod.castObj(entry.key orelse continue));
+            memory.markValue(entry.value);
         }
     }
 };
