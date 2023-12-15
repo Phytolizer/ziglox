@@ -45,7 +45,7 @@ pub var vm = VM{};
 
 fn clockNative(_: []const Value) Value {
     const now = std.time.milliTimestamp();
-    return .{ .number = @intToFloat(f64, now) / 1000.0 };
+    return .{ .number = @as(f64, @floatFromInt(now)) / 1000.0 };
 }
 
 pub fn init() !void {
@@ -136,7 +136,7 @@ fn captureUpvalue(local: *Value) !*ObjUpvalue {
     var prev_upvalue: ?*ObjUpvalue = null;
     var upvalue = vm.open_upvalues;
     while (upvalue) |uv| {
-        if (@ptrToInt(uv.location) <= @ptrToInt(local)) break;
+        if (@intFromPtr(uv.location) <= @intFromPtr(local)) break;
         prev_upvalue = uv;
         upvalue = uv.next;
     }
@@ -159,7 +159,7 @@ fn captureUpvalue(local: *Value) !*ObjUpvalue {
 
 fn closeUpvalues(last: *Value) void {
     while (vm.open_upvalues) |ouv| {
-        if (@ptrToInt(ouv.location) < @ptrToInt(last)) break;
+        if (@intFromPtr(ouv.location) < @intFromPtr(last)) break;
 
         const upvalue = ouv;
         upvalue.closed = upvalue.location.*;
@@ -343,7 +343,7 @@ fn run() !void {
             try bw.flush();
         }
         const instruction = reader.readByte();
-        switch (@intToEnum(OpCode, instruction)) {
+        switch (@as(OpCode, @enumFromInt(instruction))) {
             .constant => {
                 const constant = reader.readConstant();
                 push(constant);
@@ -453,7 +453,7 @@ fn run() !void {
             },
             .@"return" => {
                 const result = pop();
-                closeUpvalues(@ptrCast(*Value, frame.slots.ptr));
+                closeUpvalues(@ptrCast(frame.slots.ptr));
                 vm.frame_count -= 1;
                 if (vm.frame_count == 0) {
                     _ = pop();

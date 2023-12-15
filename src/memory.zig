@@ -31,7 +31,7 @@ pub const GcAllocator = struct {
     }
 
     fn alloc(p: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
-        const self = @ptrCast(*@This(), @alignCast(@alignOf(@This()), p));
+        const self = @as(*@This(), @ptrCast(@alignCast(p)));
         if (debug.STRESS_GC)
             collectGarbage();
         return self.a.rawAlloc(len, ptr_align, ret_addr);
@@ -44,7 +44,7 @@ pub const GcAllocator = struct {
         new_size: usize,
         ret_addr: usize,
     ) bool {
-        const self = @ptrCast(*@This(), @alignCast(@alignOf(@This()), p));
+        const self = @as(*@This(), @ptrCast(@alignCast(p)));
         return self.a.rawResize(
             old_mem,
             old_align,
@@ -54,7 +54,7 @@ pub const GcAllocator = struct {
     }
 
     fn free(p: *anyopaque, old_mem: []u8, old_align: u8, ret_addr: usize) void {
-        const self = @ptrCast(*@This(), @alignCast(@alignOf(@This()), p));
+        const self = @as(*@This(), @ptrCast(@alignCast(p)));
         self.a.rawFree(old_mem, old_align, ret_addr);
     }
 };
@@ -67,7 +67,7 @@ pub fn markObject(object: *Obj) void {
     if (object.is_marked) return;
 
     if (debug.LOG_GC) {
-        std.debug.print("0x{x} mark ", .{@ptrToInt(object)});
+        std.debug.print("0x{x} mark ", .{@intFromPtr(object)});
         value_mod.printValue(
             std.io.getStdErr().writer(),
             Value.initObj(object),
@@ -99,7 +99,7 @@ fn markArray(array: *ValueArray) void {
 
 fn blackenObject(object: *Obj) void {
     if (debug.LOG_GC) {
-        std.debug.print("0x{x} blacken ", .{@ptrToInt(object)});
+        std.debug.print("0x{x} blacken ", .{@intFromPtr(object)});
         value_mod.printValue(
             std.io.getStdErr().writer(),
             Value.initObj(object),

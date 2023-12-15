@@ -98,7 +98,7 @@ fn emitByte(byte: u8) !void {
 }
 
 fn emitOp(op: OpCode) !void {
-    try emitByte(@enumToInt(op));
+    try emitByte(@intFromEnum(op));
 }
 
 fn emitBytes(bytes: []const u8) !void {
@@ -122,8 +122,8 @@ fn emitLoop(loop_start: usize) !void {
     }
 
     try emitBytes(&.{
-        @truncate(u8, offset >> 8),
-        @truncate(u8, offset),
+        @as(u8, @truncate(offset >> 8)),
+        @as(u8, @truncate(offset)),
     });
 }
 
@@ -147,8 +147,8 @@ fn patchJump(offset: usize) void {
         errorAtPrevious("Too much code to jump over.");
     }
 
-    currentChunk().code[offset] = @truncate(u8, jump >> 8);
-    currentChunk().code[offset + 1] = @truncate(u8, jump);
+    currentChunk().code[offset] = @as(u8, @truncate(jump >> 8));
+    currentChunk().code[offset + 1] = @as(u8, @truncate(jump));
 }
 
 fn initCompiler(compiler: *Compiler, @"type": FunctionType) !void {
@@ -241,7 +241,7 @@ fn parseFunction(@"type": FunctionType) ParseError!void {
 
     for (0..function.upvalue_count) |i| {
         try emitBytes(&.{
-            @boolToInt(compiler.upvalues[i].is_local),
+            @intFromBool(compiler.upvalues[i].is_local),
             compiler.upvalues[i].index,
         });
     }
@@ -284,7 +284,7 @@ fn addUpvalue(compiler: *Compiler, index: u8, is_local: bool) u8 {
     for (0..upvalue_count) |i| {
         const upvalue = &compiler.upvalues[i];
         if (upvalue.index == index and upvalue.is_local == is_local) {
-            return @intCast(u8, i);
+            return @as(u8, @intCast(i));
         }
     }
 
@@ -296,14 +296,14 @@ fn addUpvalue(compiler: *Compiler, index: u8, is_local: bool) u8 {
     compiler.upvalues[upvalue_count].is_local = is_local;
     compiler.upvalues[upvalue_count].index = index;
     compiler.function.upvalue_count += 1;
-    return @intCast(u8, upvalue_count);
+    return @as(u8, @intCast(upvalue_count));
 }
 
 fn resolveUpvalue(compiler: *Compiler, name: Token) ?u8 {
     if (compiler.enclosing) |enclosing| {
         if (resolveLocal(enclosing, name)) |local| {
             enclosing.locals[local].is_captured = true;
-            return addUpvalue(compiler, @intCast(u8, local), true);
+            return addUpvalue(compiler, @as(u8, @intCast(local)), true);
         }
 
         if (resolveUpvalue(enclosing, name)) |upvalue| {
@@ -444,7 +444,7 @@ fn binary(_: bool) ParseError!void {
     const operator_kind = parser.previous.kind;
 
     const rule = getRule(operator_kind);
-    try parsePrecedence(@intToEnum(Precedence, @enumToInt(rule.precedence) + 1));
+    try parsePrecedence(@as(Precedence, @enumFromInt(@intFromEnum(rule.precedence) + 1)));
 
     switch (operator_kind) {
         .bang_equal => try emitOps(&.{ .equal, .not }),
@@ -574,10 +574,10 @@ fn parsePrecedence(precedence: Precedence) ParseError!void {
         return;
     };
 
-    const can_assign = @enumToInt(precedence) <= @enumToInt(Precedence.assignment);
+    const can_assign = @intFromEnum(precedence) <= @intFromEnum(Precedence.assignment);
     try prefixRule(can_assign);
 
-    while (@enumToInt(precedence) <= @enumToInt(getRule(parser.current.kind).precedence)) {
+    while (@intFromEnum(precedence) <= @intFromEnum(getRule(parser.current.kind).precedence)) {
         advance();
         const infixRule = getRule(parser.previous.kind).infix orelse unreachable;
         try infixRule(can_assign);
@@ -606,13 +606,13 @@ fn string(_: bool) ParseError!void {
 fn emitDynamic(short_op: OpCode, long_op: OpCode, value: usize) !void {
     if (value <= std.math.maxInt(u8)) {
         try emitOp(short_op);
-        try emitByte(@intCast(u8, value));
+        try emitByte(@intCast(value));
     } else if (value <= std.math.maxInt(u24)) {
         try emitOp(long_op);
         try emitBytes(&.{
-            @truncate(u8, value >> 16),
-            @truncate(u8, value >> 8),
-            @truncate(u8, value),
+            @truncate(value >> 16),
+            @truncate(value >> 8),
+            @truncate(value),
         });
     } else unreachable;
 }

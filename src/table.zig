@@ -44,7 +44,7 @@ pub const Table = struct {
     }
 
     pub fn set(self: *@This(), key: *ObjString, value: Value) !bool {
-        if (self.count + 1 > @floatToInt(usize, @intToFloat(f64, self.entries.len) * MAX_LOAD)) {
+        if (self.count + 1 > @as(usize, @intFromFloat(@as(f64, @floatFromInt(self.entries.len)) * MAX_LOAD))) {
             const capacity = memory.growCapacity(self.entries.len);
             try self.adjustCapacity(capacity);
         }
@@ -79,7 +79,7 @@ pub const Table = struct {
 
     fn adjustCapacity(self: *@This(), capacity: usize) !void {
         const entries = try g.gpa.allocator().alloc(Entry, capacity);
-        std.mem.set(Entry, entries, .{ .key = null, .value = .nil });
+        @memset(entries, .{ .key = null, .value = .nil });
 
         self.count = 0;
         for (self.entries) |entry| {

@@ -30,7 +30,7 @@ pub fn disassembleInstruction(c: *const Chunk, offset: usize, writer: anytype) !
     }
 
     const instruction = c.code[offset];
-    switch (@intToEnum(chunk.OpCode, instruction)) {
+    switch (@as(chunk.OpCode, @enumFromInt(instruction))) {
         .constant,
         .get_global,
         .define_global,

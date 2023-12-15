@@ -25,7 +25,7 @@ pub const Obj = struct {
         if (debug.LOG_GC) {
             std.debug.print(
                 "0x{x} free type {s}\n",
-                .{ @ptrToInt(self), std.meta.tagName(self.kind) },
+                .{ @intFromPtr(self), @tagName(self.kind) },
             );
         }
 
@@ -130,7 +130,7 @@ fn allocateObj(comptime T: type, kind: Obj.Kind) !*T {
     if (debug.LOG_GC) {
         std.debug.print(
             "0x{x} allocate {d} for {s}\n",
-            .{ @ptrToInt(obj), @sizeOf(T), std.meta.tagName(kind) },
+            .{ @intFromPtr(obj), @sizeOf(T), @tagName(kind) },
         );
     }
 
@@ -175,7 +175,7 @@ pub const ObjClosure = struct {
 
 pub fn newClosure(function: *ObjFunction) !*ObjClosure {
     const upvalues = try g.allocator.alloc(?*ObjUpvalue, function.upvalue_count);
-    std.mem.set(?*ObjUpvalue, upvalues, null);
+    @memset(upvalues, null);
     const closure = try allocateObj(ObjClosure, .closure);
     closure.function = function;
     closure.upvalues = upvalues;
